@@ -1,0 +1,17 @@
+.mw-wantedsort-nav {
+	margin: 0.5em 0;
+	font-size: 0.9em;
+}
+
+.mw-wantedsort-table {
+	width: 100%;
+}
+
+.mw-wantedsort-count {
+	text-align: right;
+}
+
+.mw-wantedsort-sort-indicator {
+	margin-left: 0.2em;
+	color: #555;
+}

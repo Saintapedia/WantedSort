@@ -1,0 +1,25 @@
+{
+	"@metadata": {
+		"authors": [ "Tom Horsley" ]
+	},
+	"wantedsort": "WantedSort",
+	"wantedsort-desc": "Filterable and sortable list of most-linked pages that do not exist",
+	"wantedsort-legend": "Filter results",
+	"wantedsort-field-namespace": "Namespace",
+	"wantedsort-field-sort": "Sort by",
+	"wantedsort-field-dir": "Direction",
+	"wantedsort-field-limit": "Results per page",
+	"wantedsort-submit": "Filter",
+	"wantedsort-ns-all": "All namespaces",
+	"wantedsort-sort-links": "Link count",
+	"wantedsort-sort-title": "Title",
+	"wantedsort-sort-namespace": "Namespace",
+	"wantedsort-dir-desc": "Descending",
+	"wantedsort-dir-asc": "Ascending",
+	"wantedsort-col-title": "Page title",
+	"wantedsort-col-namespace": "Namespace",
+	"wantedsort-col-links": "Incoming links",
+	"wantedsort-col-wlh": "What links here",
+	"wantedsort-showing": "Showing $1–$2 of $3",
+	"wantedsort-noresults": "No wanted pages found matching your filters."
+}

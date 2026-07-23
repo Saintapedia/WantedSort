@@ -1,0 +1,25 @@
+{
+	"@metadata": {
+		"authors": [ "Tom Horsley" ]
+	},
+	"wantedsort": "Name of the special page.",
+	"wantedsort-desc": "Short description shown on Special:SpecialPages.",
+	"wantedsort-legend": "Legend (title) of the filter form.",
+	"wantedsort-field-namespace": "Label for the namespace filter dropdown.",
+	"wantedsort-field-sort": "Label for the sort-by dropdown.",
+	"wantedsort-field-dir": "Label for the sort-direction dropdown.",
+	"wantedsort-field-limit": "Label for the results-per-page dropdown.",
+	"wantedsort-submit": "Text on the form submit button.",
+	"wantedsort-ns-all": "Option in the namespace dropdown meaning 'no namespace filter'.",
+	"wantedsort-sort-links": "Option label: sort by number of incoming links.",
+	"wantedsort-sort-title": "Option label: sort alphabetically by page title.",
+	"wantedsort-sort-namespace": "Option label: sort by namespace.",
+	"wantedsort-dir-desc": "Option label: descending order.",
+	"wantedsort-dir-asc": "Option label: ascending order.",
+	"wantedsort-col-title": "Table column header: the wanted page title.",
+	"wantedsort-col-namespace": "Table column header: the namespace of the wanted page.",
+	"wantedsort-col-links": "Table column header: number of pages linking to the wanted page.",
+	"wantedsort-col-wlh": "Table column header: link to Special:WhatLinksHere for the wanted page.",
+	"wantedsort-showing": "Pagination status. $1 = first result number, $2 = last result number, $3 = total.",
+	"wantedsort-noresults": "Message shown when no wanted pages match the active filters."
+}

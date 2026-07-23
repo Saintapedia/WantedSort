@@ -16,8 +16,8 @@ use MediaWiki\SpecialPage\SpecialPage;
 use MediaWiki\Title\NamespaceInfo;
 use MediaWiki\Title\Title;
 use Wikimedia\ObjectCache\WANObjectCache;
+use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IConnectionProvider;
-use Wikimedia\Rdbms\IReadableDatabase;
 
 class SpecialWantedSort extends SpecialPage {
 
@@ -187,13 +187,26 @@ class SpecialWantedSort extends SpecialPage {
 	): void {
 		$out = $this->getOutput();
 
-		$page = $this->fetchResultPage( $namespace, $sort, $dir, $limit, $offset, $miserMode );
+		$page = $this->fetchResultPage( $namespace, $sort, $dir, $limit, $offset );
 		$rows = $page['rows'];
-		$hasMore = $page['hasMore'];
 		$fromCache = $page['fromCache'];
 
+		// In miser mode, suppress the Next link once we've hit the offset ceiling
+		// so users can't loop forever on the same clamped page.
+		$hasMore = $page['hasMore']
+			&& ( !$miserMode || $offset + $limit < self::MISER_MAX_RESULTS );
+
 		if ( $rows === [] ) {
+			if ( $fromCache ) {
+				$out->addWikiMsg( 'wantedsort-cached-notice' );
+			}
 			$out->addWikiMsg( 'wantedsort-noresults' );
+			// Still render nav so users with a stale deep-link have a Prev control.
+			if ( $offset > 0 ) {
+				$out->addHTML( $this->buildNavigationBar(
+					$offset, $limit, 0, false, $namespace, $sort, $dir
+				) );
+			}
 			return;
 		}
 
@@ -201,11 +214,14 @@ class SpecialWantedSort extends SpecialPage {
 			$out->addWikiMsg( 'wantedsort-cached-notice' );
 		}
 
-		$shown = count( $rows );
+		[ 'html' => $tableHtml, 'shown' => $shown ] = $this->buildTable(
+			$rows, $sort, $dir, $namespace, $limit
+		);
+
 		$out->addHTML( $this->buildNavigationBar(
 			$offset, $limit, $shown, $hasMore, $namespace, $sort, $dir
 		) );
-		$out->addHTML( $this->buildTable( $rows, $sort, $dir, $namespace, $limit ) );
+		$out->addHTML( $tableHtml );
 		$out->addHTML( $this->buildNavigationBar(
 			$offset, $limit, $shown, $hasMore, $namespace, $sort, $dir
 		) );
@@ -221,13 +237,17 @@ class SpecialWantedSort extends SpecialPage {
 		string $sort,
 		string $dir,
 		int $limit,
-		int $offset,
-		bool $miserMode
+		int $offset
 	): array {
-		$ttl = $miserMode ? self::CACHE_TTL_MISER : self::CACHE_TTL;
+		$threshold = (int)$this->getConfig()->get( MainConfigNames::WantedPagesThreshold );
+		$ttl = (bool)$this->getConfig()->get( MainConfigNames::MiserMode )
+			? self::CACHE_TTL_MISER
+			: self::CACHE_TTL;
+
 		$cacheKey = $this->wanCache->makeKey(
 			'WantedSort',
 			'v1',
+			(string)$threshold,
 			(string)( $namespace ?? 'all' ),
 			$sort,
 			$dir,
@@ -240,18 +260,24 @@ class SpecialWantedSort extends SpecialPage {
 			$cacheKey,
 			$ttl,
 			function ( $oldValue, &$ttlOut, array &$setOpts ) use (
-				$namespace, $sort, $dir, $limit, $offset, &$fromCache
+				$namespace, $sort, $dir, $limit, $offset, $threshold, &$fromCache
 			) {
 				$fromCache = false;
-				// Avoid stampedes after a long query: randomize remaining TTL a little.
-				$setOpts['pcTTL'] = WANObjectCache::TTL_PROC_LONG;
-				return $this->queryResultPage( $namespace, $sort, $dir, $limit, $offset );
-			}
+				$dbr = $this->dbProvider->getReplicaDatabase();
+				// Prevent caching results from a lagged replica for the full TTL.
+				$setOpts += Database::getCacheSetOptions( $dbr );
+				return $this->queryResultPage( $namespace, $sort, $dir, $limit, $offset, $threshold );
+			},
+			[
+				'lockTSE'  => 30,
+				'staleTTL' => 60,
+				'pcTTL'    => WANObjectCache::TTL_PROC_LONG,
+			]
 		);
 
 		return [
-			'rows' => $cached['rows'] ?? [],
-			'hasMore' => (bool)( $cached['hasMore'] ?? false ),
+			'rows'      => $cached['rows'] ?? [],
+			'hasMore'   => (bool)( $cached['hasMore'] ?? false ),
 			'fromCache' => $fromCache && $cached !== false,
 		];
 	}
@@ -266,11 +292,10 @@ class SpecialWantedSort extends SpecialPage {
 		string $sort,
 		string $dir,
 		int $limit,
-		int $offset
+		int $offset,
+		int $threshold
 	): array {
 		$dbr = $this->dbProvider->getReplicaDatabase();
-
-		$threshold = (int)$this->getConfig()->get( MainConfigNames::WantedPagesThreshold ) - 1;
 
 		[ $blNamespace, $blTitle ] = $this->linksMigration->getTitleFields( 'pagelinks' );
 		$queryInfo = $this->linksMigration->getQueryInfo( 'pagelinks', 'pagelinks' );
@@ -301,7 +326,7 @@ class SpecialWantedSort extends SpecialPage {
 		], $queryInfo['joins'] );
 
 		$having = [
-			'COUNT(*) > ' . $dbr->addQuotes( $threshold ),
+			'COUNT(*) > ' . $dbr->addQuotes( $threshold - 1 ),
 			'COUNT(*) > SUM(pg2.page_is_redirect)',
 		];
 
@@ -366,6 +391,7 @@ class SpecialWantedSort extends SpecialPage {
 
 	/**
 	 * @param list<array{namespace:int,title:string,value:int}> $rows
+	 * @return array{html:string,shown:int}
 	 */
 	private function buildTable(
 		array $rows,
@@ -373,11 +399,12 @@ class SpecialWantedSort extends SpecialPage {
 		string $dir,
 		?int $namespace,
 		int $limit
-	): string {
+	): array {
 		$linkRenderer = $this->getLinkRenderer();
 		$lang = $this->getLanguage();
 
-		// Collect titles for one-shot link cache warm-up
+		// Collect titles for one-shot link cache warm-up; filter bad titles here
+		// so $shown reflects only rows that actually render.
 		$prepared = [];
 		$titles = [];
 		foreach ( $rows as $row ) {
@@ -431,7 +458,7 @@ class SpecialWantedSort extends SpecialPage {
 		$html .= Html::closeElement( 'tbody' );
 		$html .= Html::closeElement( 'table' );
 
-		return $html;
+		return [ 'html' => $html, 'shown' => count( $prepared ) ];
 	}
 
 	/** Sort column header link; always resets offset to 0 to avoid stale pagination. */
@@ -446,7 +473,7 @@ class SpecialWantedSort extends SpecialPage {
 		$label = $this->msg( $msgKey )->escaped();
 
 		if ( $col === $currentSort ) {
-			$newDir   = $currentDir === 'asc' ? 'desc' : 'asc';
+			$newDir    = $currentDir === 'asc' ? 'desc' : 'asc';
 			$indicator = $currentDir === 'asc' ? ' ↑' : ' ↓';
 			$label .= Html::element( 'span', [ 'class' => 'mw-wantedsort-sort-indicator' ], $indicator );
 		} else {
@@ -488,11 +515,11 @@ class SpecialWantedSort extends SpecialPage {
 			);
 		}
 
-		$from = $offset + 1;
-		$to = $offset + $shown;
-		$parts[] = $this->msg( 'wantedsort-showing-from' )
-			->numParams( $from, $to )
-			->escaped();
+		if ( $shown > 0 ) {
+			$parts[] = $this->msg( 'wantedsort-showing-from' )
+				->numParams( $offset + 1, $offset + $shown )
+				->escaped();
+		}
 
 		if ( $hasMore ) {
 			$nextUrl = $this->getPageTitle()->getLocalURL( $baseParams + [ 'offset' => $offset + $limit ] );

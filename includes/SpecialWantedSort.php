@@ -7,11 +7,11 @@
 
 namespace MediaWiki\Extension\WantedSort;
 
+use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\HTMLForm\HTMLForm;
 use MediaWiki\Html\Html;
 use MediaWiki\Linker\LinksMigration;
 use MediaWiki\MainConfigNames;
-use MediaWiki\Page\LinkBatchFactory;
 use MediaWiki\SpecialPage\SpecialPage;
 use MediaWiki\Title\NamespaceInfo;
 use MediaWiki\Title\Title;
@@ -95,15 +95,18 @@ class SpecialWantedSort extends SpecialPage {
 		ksort( $nsOptions );
 		$nsOptions = array_merge( [ $allLabel => '' ], $nsOptions );
 
+		// Explicit field names so GET params are namespace/sort/dir/limit (not wp*).
 		$formFields = [
 			'namespace' => [
 				'type'          => 'select',
+				'name'          => 'namespace',
 				'label-message' => 'wantedsort-field-namespace',
 				'options'       => $nsOptions,
 				'default'       => $namespace !== null ? (string)$namespace : '',
 			],
 			'sort' => [
 				'type'          => 'select',
+				'name'          => 'sort',
 				'label-message' => 'wantedsort-field-sort',
 				'options'       => [
 					$this->msg( 'wantedsort-sort-links' )->text()     => 'links',
@@ -114,6 +117,7 @@ class SpecialWantedSort extends SpecialPage {
 			],
 			'dir' => [
 				'type'          => 'select',
+				'name'          => 'dir',
 				'label-message' => 'wantedsort-field-dir',
 				'options'       => [
 					$this->msg( 'wantedsort-dir-desc' )->text() => 'desc',
@@ -123,6 +127,7 @@ class SpecialWantedSort extends SpecialPage {
 			],
 			'limit' => [
 				'type'          => 'select',
+				'name'          => 'limit',
 				'label-message' => 'wantedsort-field-limit',
 				'options'       => [ '20' => 20, '50' => 50, '100' => 100, '250' => 250, '500' => 500 ],
 				'default'       => $limit,
@@ -375,7 +380,7 @@ class SpecialWantedSort extends SpecialPage {
 	}
 
 	/** @inheritDoc */
-	protected function getGroupName() {
+	protected function getGroupName(): string {
 		return 'maintenance';
 	}
 }

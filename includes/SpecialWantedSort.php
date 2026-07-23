@@ -18,6 +18,7 @@ use MediaWiki\Title\Title;
 use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IConnectionProvider;
+use Wikimedia\Rdbms\IReadableDatabase;
 
 class SpecialWantedSort extends SpecialPage {
 
@@ -80,9 +81,10 @@ class SpecialWantedSort extends SpecialPage {
 		$dir = $request->getVal( 'dir', 'desc' );
 		$dir = ( $dir === 'asc' ) ? 'asc' : 'desc';
 
-		$maxLimit = $miserMode ? self::MISER_MAX_LIMIT : self::MAX_LIMIT;
+		$validLimits = $miserMode ? [ 20, 50, 100 ] : [ 20, 50, 100, 250, 500 ];
 		$limit = $request->getInt( 'limit', self::DEFAULT_LIMIT );
-		$limit = max( 1, min( $limit, $maxLimit ) );
+		// Snap to a valid discrete option; reject arbitrary crafted values.
+		$limit = $this->snapToValidLimit( $limit, $validLimits );
 
 		$offset = max( 0, $request->getInt( 'offset', 0 ) );
 		if ( $miserMode ) {
@@ -122,11 +124,9 @@ class SpecialWantedSort extends SpecialPage {
 		ksort( $nsOptions );
 		$nsOptions = array_merge( [ $allLabel => '' ], $nsOptions );
 
-		$limitOptions = [ '20' => 20, '50' => 50, '100' => 100 ];
-		if ( !$miserMode ) {
-			$limitOptions['250'] = 250;
-			$limitOptions['500'] = 500;
-		}
+		$limitOptions = $miserMode
+			? [ '20' => 20, '50' => 50, '100' => 100 ]
+			: [ '20' => 20, '50' => 50, '100' => 100, '250' => 250, '500' => 500 ];
 
 		// Explicit field names so GET params are namespace/sort/dir/limit (not wp*).
 		$formFields = [
@@ -266,7 +266,8 @@ class SpecialWantedSort extends SpecialPage {
 				$dbr = $this->dbProvider->getReplicaDatabase();
 				// Prevent caching results from a lagged replica for the full TTL.
 				$setOpts += Database::getCacheSetOptions( $dbr );
-				return $this->queryResultPage( $namespace, $sort, $dir, $limit, $offset, $threshold );
+				// Pass the same $dbr so cache-set options and the SELECT share one handle.
+				return $this->queryResultPage( $namespace, $sort, $dir, $limit, $offset, $threshold, $dbr );
 			},
 			[
 				'lockTSE'  => 30,
@@ -285,6 +286,7 @@ class SpecialWantedSort extends SpecialPage {
 	/**
 	 * Run the live grouped pagelinks query for one UI page.
 	 *
+	 * @param IReadableDatabase|null $dbr Caller-supplied handle; obtained fresh if null.
 	 * @return array{rows:list<array{namespace:int,title:string,value:int}>,hasMore:bool}
 	 */
 	private function queryResultPage(
@@ -293,9 +295,22 @@ class SpecialWantedSort extends SpecialPage {
 		string $dir,
 		int $limit,
 		int $offset,
-		int $threshold
+		int $threshold,
+		?IReadableDatabase $dbr = null
 	): array {
-		$dbr = $this->dbProvider->getReplicaDatabase();
+		$dbr ??= $this->dbProvider->getReplicaDatabase();
+
+		// Under miser mode, cap the DB fetch so a crafted high offset cannot
+		// return rows past MISER_MAX_RESULTS, matching QueryPage::getDBLimit().
+		$miserMode = (bool)$this->getConfig()->get( MainConfigNames::MiserMode );
+		if ( $miserMode ) {
+			$dbLimit = max( 0, min( $limit + 1, self::MISER_MAX_RESULTS - $offset ) );
+			if ( $dbLimit === 0 ) {
+				return [ 'rows' => [], 'hasMore' => false ];
+			}
+		} else {
+			$dbLimit = $limit + 1;
+		}
 
 		[ $blNamespace, $blTitle ] = $this->linksMigration->getTitleFields( 'pagelinks' );
 		$queryInfo = $this->linksMigration->getQueryInfo( 'pagelinks', 'pagelinks' );
@@ -344,7 +359,7 @@ class SpecialWantedSort extends SpecialPage {
 			->having( $having )
 			->groupBy( [ $blNamespace, $blTitle ] )
 			->orderBy( $orderBy )
-			->limit( $limit + 1 )
+			->limit( $dbLimit )
 			->offset( $offset )
 			->joinConds( $joinConds )
 			->caller( __METHOD__ )
@@ -531,6 +546,22 @@ class SpecialWantedSort extends SpecialPage {
 		return Html::rawElement( 'div', [ 'class' => 'mw-wantedsort-nav' ],
 			implode( ' | ', $parts )
 		);
+	}
+
+	/**
+	 * Snap $value to the largest option in $options that is <= $value,
+	 * falling back to the smallest option if $value is below all of them.
+	 *
+	 * @param int[] $options Sorted ascending list of valid values.
+	 */
+	private function snapToValidLimit( int $value, array $options ): int {
+		$snapped = $options[0];
+		foreach ( $options as $option ) {
+			if ( $value >= $option ) {
+				$snapped = $option;
+			}
+		}
+		return $snapped;
 	}
 
 	/** @inheritDoc */

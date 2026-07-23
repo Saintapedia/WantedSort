@@ -22,5 +22,7 @@
 	"wantedsort-col-links": "Incoming links",
 	"wantedsort-col-wlh": "What links here",
 	"wantedsort-showing-from": "Results $1–$2",
-	"wantedsort-noresults": "No wanted pages found matching your filters."
+	"wantedsort-noresults": "No wanted pages found matching your filters.",
+	"wantedsort-miser-notice": "This wiki is running in miser mode. Live wanted-page scans are capped and results may be served from a short cache to protect the database.",
+	"wantedsort-cached-notice": "These results were served from cache and may be a few minutes old."
 }

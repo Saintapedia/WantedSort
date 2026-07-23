@@ -19,7 +19,8 @@
 				"ConnectionProvider",
 				"LinksMigration",
 				"NamespaceInfo",
-				"LinkBatchFactory"
+				"LinkBatchFactory",
+				"MainWANObjectCache"
 			]
 		}
 	},

@@ -15,31 +15,42 @@ use MediaWiki\MainConfigNames;
 use MediaWiki\SpecialPage\SpecialPage;
 use MediaWiki\Title\NamespaceInfo;
 use MediaWiki\Title\Title;
+use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\IConnectionProvider;
-use Wikimedia\Rdbms\IResultWrapper;
+use Wikimedia\Rdbms\IReadableDatabase;
 
 class SpecialWantedSort extends SpecialPage {
 
 	private const VALID_SORTS = [ 'links', 'title', 'namespace' ];
 	private const DEFAULT_LIMIT = 50;
 	private const MAX_LIMIT = 500;
+	/** Tighter caps when $wgMiserMode is on (parity with QueryPage intent). */
+	private const MISER_MAX_LIMIT = 100;
+	private const MISER_MAX_RESULTS = 10000;
+	/** Short TTL when live queries are cheap enough to re-run. */
+	private const CACHE_TTL = 300;
+	/** Longer TTL under miser mode so repeated views hit the cache. */
+	private const CACHE_TTL_MISER = 3600;
 
 	private IConnectionProvider $dbProvider;
 	private LinksMigration $linksMigration;
 	private NamespaceInfo $namespaceInfo;
 	private LinkBatchFactory $linkBatchFactory;
+	private WANObjectCache $wanCache;
 
 	public function __construct(
 		IConnectionProvider $dbProvider,
 		LinksMigration $linksMigration,
 		NamespaceInfo $namespaceInfo,
-		LinkBatchFactory $linkBatchFactory
+		LinkBatchFactory $linkBatchFactory,
+		WANObjectCache $wanCache
 	) {
 		parent::__construct( 'WantedSort' );
 		$this->dbProvider = $dbProvider;
 		$this->linksMigration = $linksMigration;
 		$this->namespaceInfo = $namespaceInfo;
 		$this->linkBatchFactory = $linkBatchFactory;
+		$this->wanCache = $wanCache;
 	}
 
 	/** @inheritDoc */
@@ -52,6 +63,7 @@ class SpecialWantedSort extends SpecialPage {
 		$out->addModuleStyles( 'ext.wantedSort' );
 
 		$request = $this->getRequest();
+		$miserMode = (bool)$this->getConfig()->get( MainConfigNames::MiserMode );
 
 		$nsRaw = $request->getVal( 'namespace', '' );
 		if ( $nsRaw !== '' && ctype_digit( $nsRaw ) && $this->namespaceInfo->exists( (int)$nsRaw ) ) {
@@ -68,16 +80,31 @@ class SpecialWantedSort extends SpecialPage {
 		$dir = $request->getVal( 'dir', 'desc' );
 		$dir = ( $dir === 'asc' ) ? 'asc' : 'desc';
 
+		$maxLimit = $miserMode ? self::MISER_MAX_LIMIT : self::MAX_LIMIT;
 		$limit = $request->getInt( 'limit', self::DEFAULT_LIMIT );
-		$limit = max( 1, min( $limit, self::MAX_LIMIT ) );
+		$limit = max( 1, min( $limit, $maxLimit ) );
 
 		$offset = max( 0, $request->getInt( 'offset', 0 ) );
+		if ( $miserMode ) {
+			// Cap deep OFFSET scans (GROUP BY + OFFSET is expensive).
+			$offset = min( $offset, self::MISER_MAX_RESULTS );
+		}
 
-		$this->showFilterForm( $namespace, $sort, $dir, $limit );
-		$this->showResults( $namespace, $sort, $dir, $limit, $offset );
+		if ( $miserMode ) {
+			$out->addWikiMsg( 'wantedsort-miser-notice' );
+		}
+
+		$this->showFilterForm( $namespace, $sort, $dir, $limit, $miserMode );
+		$this->showResults( $namespace, $sort, $dir, $limit, $offset, $miserMode );
 	}
 
-	private function showFilterForm( ?int $namespace, string $sort, string $dir, int $limit ): void {
+	private function showFilterForm(
+		?int $namespace,
+		string $sort,
+		string $dir,
+		int $limit,
+		bool $miserMode
+	): void {
 		$lang = $this->getContentLanguage();
 
 		// Build namespace options with "All" pinned first, rest sorted by label
@@ -94,6 +121,12 @@ class SpecialWantedSort extends SpecialPage {
 		}
 		ksort( $nsOptions );
 		$nsOptions = array_merge( [ $allLabel => '' ], $nsOptions );
+
+		$limitOptions = [ '20' => 20, '50' => 50, '100' => 100 ];
+		if ( !$miserMode ) {
+			$limitOptions['250'] = 250;
+			$limitOptions['500'] = 500;
+		}
 
 		// Explicit field names so GET params are namespace/sort/dir/limit (not wp*).
 		$formFields = [
@@ -129,7 +162,7 @@ class SpecialWantedSort extends SpecialPage {
 				'type'          => 'select',
 				'name'          => 'limit',
 				'label-message' => 'wantedsort-field-limit',
-				'options'       => [ '20' => 20, '50' => 50, '100' => 100, '250' => 250, '500' => 500 ],
+				'options'       => $limitOptions,
 				'default'       => $limit,
 			],
 		];
@@ -144,8 +177,97 @@ class SpecialWantedSort extends SpecialPage {
 			->displayForm( false );
 	}
 
-	private function showResults( ?int $namespace, string $sort, string $dir, int $limit, int $offset ): void {
+	private function showResults(
+		?int $namespace,
+		string $sort,
+		string $dir,
+		int $limit,
+		int $offset,
+		bool $miserMode
+	): void {
 		$out = $this->getOutput();
+
+		$page = $this->fetchResultPage( $namespace, $sort, $dir, $limit, $offset, $miserMode );
+		$rows = $page['rows'];
+		$hasMore = $page['hasMore'];
+		$fromCache = $page['fromCache'];
+
+		if ( $rows === [] ) {
+			$out->addWikiMsg( 'wantedsort-noresults' );
+			return;
+		}
+
+		if ( $fromCache ) {
+			$out->addWikiMsg( 'wantedsort-cached-notice' );
+		}
+
+		$shown = count( $rows );
+		$out->addHTML( $this->buildNavigationBar(
+			$offset, $limit, $shown, $hasMore, $namespace, $sort, $dir
+		) );
+		$out->addHTML( $this->buildTable( $rows, $sort, $dir, $namespace, $limit ) );
+		$out->addHTML( $this->buildNavigationBar(
+			$offset, $limit, $shown, $hasMore, $namespace, $sort, $dir
+		) );
+	}
+
+	/**
+	 * Fetch one page of results, optionally via WAN cache.
+	 *
+	 * @return array{rows:list<array{namespace:int,title:string,value:int}>,hasMore:bool,fromCache:bool}
+	 */
+	private function fetchResultPage(
+		?int $namespace,
+		string $sort,
+		string $dir,
+		int $limit,
+		int $offset,
+		bool $miserMode
+	): array {
+		$ttl = $miserMode ? self::CACHE_TTL_MISER : self::CACHE_TTL;
+		$cacheKey = $this->wanCache->makeKey(
+			'WantedSort',
+			'v1',
+			(string)( $namespace ?? 'all' ),
+			$sort,
+			$dir,
+			(string)$limit,
+			(string)$offset
+		);
+
+		$fromCache = true;
+		$cached = $this->wanCache->getWithSetCallback(
+			$cacheKey,
+			$ttl,
+			function ( $oldValue, &$ttlOut, array &$setOpts ) use (
+				$namespace, $sort, $dir, $limit, $offset, &$fromCache
+			) {
+				$fromCache = false;
+				// Avoid stampedes after a long query: randomize remaining TTL a little.
+				$setOpts['pcTTL'] = WANObjectCache::TTL_PROC_LONG;
+				return $this->queryResultPage( $namespace, $sort, $dir, $limit, $offset );
+			}
+		);
+
+		return [
+			'rows' => $cached['rows'] ?? [],
+			'hasMore' => (bool)( $cached['hasMore'] ?? false ),
+			'fromCache' => $fromCache && $cached !== false,
+		];
+	}
+
+	/**
+	 * Run the live grouped pagelinks query for one UI page.
+	 *
+	 * @return array{rows:list<array{namespace:int,title:string,value:int}>,hasMore:bool}
+	 */
+	private function queryResultPage(
+		?int $namespace,
+		string $sort,
+		string $dir,
+		int $limit,
+		int $offset
+	): array {
 		$dbr = $this->dbProvider->getReplicaDatabase();
 
 		$threshold = (int)$this->getConfig()->get( MainConfigNames::WantedPagesThreshold ) - 1;
@@ -185,8 +307,7 @@ class SpecialWantedSort extends SpecialPage {
 
 		$orderBy = $this->buildOrderBy( $sort, $dir, $blNamespace, $blTitle );
 
-		// Fetch one extra row to detect whether a next page exists,
-		// avoiding a separate full-scan COUNT query.
+		// One extra row detects a next page without a separate COUNT(*).
 		$res = $dbr->newSelectQueryBuilder()
 			->rawTables( $tables )
 			->select( [
@@ -204,16 +325,21 @@ class SpecialWantedSort extends SpecialPage {
 			->caller( __METHOD__ )
 			->fetchResultSet();
 
-		$hasMore = $res->numRows() > $limit;
-
-		if ( $res->numRows() === 0 ) {
-			$out->addWikiMsg( 'wantedsort-noresults' );
-			return;
+		$rows = [];
+		$hasMore = false;
+		foreach ( $res as $row ) {
+			if ( count( $rows ) >= $limit ) {
+				$hasMore = true;
+				break;
+			}
+			$rows[] = [
+				'namespace' => (int)$row->namespace,
+				'title'     => (string)$row->title,
+				'value'     => (int)$row->value,
+			];
 		}
 
-		$out->addHTML( $this->buildNavigationBar( $offset, $limit, $hasMore, $namespace, $sort, $dir ) );
-		$out->addHTML( $this->buildTable( $res, $limit, $sort, $dir, $namespace, $offset ) );
-		$out->addHTML( $this->buildNavigationBar( $offset, $limit, $hasMore, $namespace, $sort, $dir ) );
+		return [ 'rows' => $rows, 'hasMore' => $hasMore ];
 	}
 
 	/**
@@ -238,27 +364,26 @@ class SpecialWantedSort extends SpecialPage {
 		}
 	}
 
+	/**
+	 * @param list<array{namespace:int,title:string,value:int}> $rows
+	 */
 	private function buildTable(
-		IResultWrapper $res,
-		int $limit,
+		array $rows,
 		string $sort,
 		string $dir,
 		?int $namespace,
-		int $offset
+		int $limit
 	): string {
 		$linkRenderer = $this->getLinkRenderer();
 		$lang = $this->getLanguage();
 
 		// Collect titles for one-shot link cache warm-up
-		$rows = [];
+		$prepared = [];
 		$titles = [];
-		foreach ( $res as $row ) {
-			if ( count( $rows ) >= $limit ) {
-				break;
-			}
-			$title = Title::makeTitleSafe( (int)$row->namespace, $row->title );
+		foreach ( $rows as $row ) {
+			$title = Title::makeTitleSafe( $row['namespace'], $row['title'] );
 			if ( $title ) {
-				$rows[] = [ 'title' => $title, 'row' => $row ];
+				$prepared[] = [ 'title' => $title, 'value' => $row['value'], 'namespace' => $row['namespace'] ];
 				$titles[] = $title;
 			}
 		}
@@ -284,15 +409,14 @@ class SpecialWantedSort extends SpecialPage {
 		$html .= Html::closeElement( 'tr' ) . Html::closeElement( 'thead' );
 
 		$html .= Html::openElement( 'tbody' );
-		foreach ( $rows as [ 'title' => $title, 'row' => $row ] ) {
+		foreach ( $prepared as [ 'title' => $title, 'value' => $value, 'namespace' => $nsId ] ) {
 			$pageLink = $linkRenderer->makeBrokenLink( $title );
 			$wlhTitle = SpecialPage::getTitleFor( 'Whatlinkshere', $title->getPrefixedText() );
 			$wlhLink  = $linkRenderer->makeLink(
 				$wlhTitle,
-				$this->msg( 'nlinks' )->numParams( (int)$row->value )->text()
+				$this->msg( 'nlinks' )->numParams( $value )->text()
 			);
 
-			$nsId   = (int)$row->namespace;
 			$nsText = $nsId === NS_MAIN
 				? $this->msg( 'blanknamespace' )->escaped()
 				: htmlspecialchars( str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId ) );
@@ -300,7 +424,7 @@ class SpecialWantedSort extends SpecialPage {
 			$html .= Html::openElement( 'tr' );
 			$html .= Html::rawElement( 'td', [], $pageLink );
 			$html .= Html::rawElement( 'td', [], $nsText );
-			$html .= Html::element( 'td', [ 'class' => 'mw-wantedsort-count' ], (string)(int)$row->value );
+			$html .= Html::element( 'td', [ 'class' => 'mw-wantedsort-count' ], (string)$value );
 			$html .= Html::rawElement( 'td', [], $wlhLink );
 			$html .= Html::closeElement( 'tr' );
 		}
@@ -343,6 +467,7 @@ class SpecialWantedSort extends SpecialPage {
 	private function buildNavigationBar(
 		int $offset,
 		int $limit,
+		int $shown,
 		bool $hasMore,
 		?int $namespace,
 		string $sort,
@@ -363,8 +488,10 @@ class SpecialWantedSort extends SpecialPage {
 			);
 		}
 
+		$from = $offset + 1;
+		$to = $offset + $shown;
 		$parts[] = $this->msg( 'wantedsort-showing-from' )
-			->numParams( $offset + 1, $offset + $limit )
+			->numParams( $from, $to )
 			->escaped();
 
 		if ( $hasMore ) {

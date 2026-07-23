@@ -22,5 +22,7 @@
 	"wantedsort-col-links": "Table column header: number of pages linking to the wanted page.",
 	"wantedsort-col-wlh": "Table column header: link to Special:WhatLinksHere for the wanted page.",
 	"wantedsort-showing-from": "Pagination status without a total (total is not computed to avoid full scans). $1 = first result number on this page, $2 = last result number on this page.",
-	"wantedsort-noresults": "Message shown when no wanted pages match the active filters."
+	"wantedsort-noresults": "Message shown when no wanted pages match the active filters.",
+	"wantedsort-miser-notice": "Shown when $wgMiserMode is enabled. Explains capped limits and caching.",
+	"wantedsort-cached-notice": "Shown when the current result page was loaded from WANObjectCache rather than a live SQL query."
 }

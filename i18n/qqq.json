@@ -4,6 +4,7 @@
 	},
 	"wantedsort": "Name of the special page.",
 	"wantedsort-desc": "Short description shown on Special:SpecialPages.",
+	"wantedsort-summary": "Introductory paragraph shown beneath the page heading via outputHeader().",
 	"wantedsort-legend": "Legend (title) of the filter form.",
 	"wantedsort-field-namespace": "Label for the namespace filter dropdown.",
 	"wantedsort-field-sort": "Label for the sort-by dropdown.",
@@ -20,6 +21,6 @@
 	"wantedsort-col-namespace": "Table column header: the namespace of the wanted page.",
 	"wantedsort-col-links": "Table column header: number of pages linking to the wanted page.",
 	"wantedsort-col-wlh": "Table column header: link to Special:WhatLinksHere for the wanted page.",
-	"wantedsort-showing": "Pagination status. $1 = first result number, $2 = last result number, $3 = total.",
+	"wantedsort-showing-from": "Pagination status without a total (total is not computed to avoid full scans). $1 = first result number on this page, $2 = last result number on this page.",
 	"wantedsort-noresults": "Message shown when no wanted pages match the active filters."
 }

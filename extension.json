@@ -7,7 +7,7 @@
 	"type": "specialpage",
 	"manifest_version": 2,
 	"requires": {
-		"MediaWiki": ">= 1.39.0"
+		"MediaWiki": ">= 1.43.0"
 	},
 	"AutoloadNamespaces": {
 		"MediaWiki\\Extension\\WantedSort\\": "includes/"
@@ -16,14 +16,18 @@
 		"WantedSort": {
 			"class": "MediaWiki\\Extension\\WantedSort\\SpecialWantedSort",
 			"services": [
-				"DBLoadBalancerFactory",
+				"ConnectionProvider",
 				"LinksMigration",
-				"NamespaceInfo"
+				"NamespaceInfo",
+				"LinkBatchFactory"
 			]
 		}
 	},
 	"MessagesDirs": {
 		"WantedSort": [ "i18n" ]
+	},
+	"ExtensionMessagesFiles": {
+		"WantedSortAlias": "WantedSort.alias.php"
 	},
 	"ResourceModules": {
 		"ext.wantedSort": {

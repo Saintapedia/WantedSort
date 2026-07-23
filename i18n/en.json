@@ -4,6 +4,7 @@
 	},
 	"wantedsort": "WantedSort",
 	"wantedsort-desc": "Filterable and sortable list of most-linked pages that do not exist",
+	"wantedsort-summary": "This page lists pages that are linked to but do not exist, with filters for namespace and sorting options.",
 	"wantedsort-legend": "Filter results",
 	"wantedsort-field-namespace": "Namespace",
 	"wantedsort-field-sort": "Sort by",
@@ -20,6 +21,6 @@
 	"wantedsort-col-namespace": "Namespace",
 	"wantedsort-col-links": "Incoming links",
 	"wantedsort-col-wlh": "What links here",
-	"wantedsort-showing": "Showing $1–$2 of $3",
+	"wantedsort-showing-from": "Results $1–$2",
 	"wantedsort-noresults": "No wanted pages found matching your filters."
 }

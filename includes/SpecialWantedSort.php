@@ -7,13 +7,16 @@
 
 namespace MediaWiki\Extension\WantedSort;
 
+use MediaWiki\HTMLForm\HTMLForm;
 use MediaWiki\Html\Html;
 use MediaWiki\Linker\LinksMigration;
 use MediaWiki\MainConfigNames;
-use MediaWiki\Namespace\NamespaceInfo;
+use MediaWiki\Page\LinkBatchFactory;
 use MediaWiki\SpecialPage\SpecialPage;
+use MediaWiki\Title\NamespaceInfo;
 use MediaWiki\Title\Title;
 use Wikimedia\Rdbms\IConnectionProvider;
+use Wikimedia\Rdbms\IResultWrapper;
 
 class SpecialWantedSort extends SpecialPage {
 
@@ -24,21 +27,25 @@ class SpecialWantedSort extends SpecialPage {
 	private IConnectionProvider $dbProvider;
 	private LinksMigration $linksMigration;
 	private NamespaceInfo $namespaceInfo;
+	private LinkBatchFactory $linkBatchFactory;
 
 	public function __construct(
 		IConnectionProvider $dbProvider,
 		LinksMigration $linksMigration,
-		NamespaceInfo $namespaceInfo
+		NamespaceInfo $namespaceInfo,
+		LinkBatchFactory $linkBatchFactory
 	) {
 		parent::__construct( 'WantedSort' );
 		$this->dbProvider = $dbProvider;
 		$this->linksMigration = $linksMigration;
 		$this->namespaceInfo = $namespaceInfo;
+		$this->linkBatchFactory = $linkBatchFactory;
 	}
 
 	/** @inheritDoc */
 	public function execute( $par ) {
 		$this->setHeaders();
+		$this->outputHeader();
 		$this->addHelpLink( 'Extension:WantedSort' );
 
 		$out = $this->getOutput();
@@ -46,10 +53,12 @@ class SpecialWantedSort extends SpecialPage {
 
 		$request = $this->getRequest();
 
-		$namespace = $request->getVal( 'namespace', '' );
-		$namespace = ( $namespace !== '' && ctype_digit( $namespace ) )
-			? (int)$namespace
-			: null;
+		$nsRaw = $request->getVal( 'namespace', '' );
+		if ( $nsRaw !== '' && ctype_digit( $nsRaw ) && $this->namespaceInfo->exists( (int)$nsRaw ) ) {
+			$namespace = (int)$nsRaw;
+		} else {
+			$namespace = null;
+		}
 
 		$sort = $request->getVal( 'sort', 'links' );
 		if ( !in_array( $sort, self::VALID_SORTS, true ) ) {
@@ -69,16 +78,13 @@ class SpecialWantedSort extends SpecialPage {
 	}
 
 	private function showFilterForm( ?int $namespace, string $sort, string $dir, int $limit ): void {
-		$out = $this->getOutput();
 		$lang = $this->getContentLanguage();
-		$title = $this->getPageTitle();
 
-		// Build namespace options: "All namespaces" + each registered namespace
-		$nsOptions = [ $this->msg( 'wantedsort-ns-all' )->text() => '' ];
-		$namespaces = $lang->getNamespaces();
-		foreach ( $namespaces as $nsId => $nsName ) {
+		// Build namespace options with "All" pinned first, rest sorted by label
+		$allLabel = $this->msg( 'wantedsort-ns-all' )->text();
+		$nsOptions = [];
+		foreach ( $lang->getNamespaces() as $nsId => $nsName ) {
 			if ( $nsId < NS_MAIN ) {
-				// Skip virtual/special namespaces (negative IDs)
 				continue;
 			}
 			$label = $nsId === NS_MAIN
@@ -87,50 +93,45 @@ class SpecialWantedSort extends SpecialPage {
 			$nsOptions[$label] = (string)$nsId;
 		}
 		ksort( $nsOptions );
+		$nsOptions = array_merge( [ $allLabel => '' ], $nsOptions );
 
 		$formFields = [
 			'namespace' => [
-				'type' => 'select',
+				'type'          => 'select',
 				'label-message' => 'wantedsort-field-namespace',
-				'options' => $nsOptions,
-				'default' => $namespace !== null ? (string)$namespace : '',
+				'options'       => $nsOptions,
+				'default'       => $namespace !== null ? (string)$namespace : '',
 			],
 			'sort' => [
-				'type' => 'select',
+				'type'          => 'select',
 				'label-message' => 'wantedsort-field-sort',
-				'options' => [
-					$this->msg( 'wantedsort-sort-links' )->text() => 'links',
-					$this->msg( 'wantedsort-sort-title' )->text() => 'title',
+				'options'       => [
+					$this->msg( 'wantedsort-sort-links' )->text()     => 'links',
+					$this->msg( 'wantedsort-sort-title' )->text()     => 'title',
 					$this->msg( 'wantedsort-sort-namespace' )->text() => 'namespace',
 				],
-				'default' => $sort,
+				'default'       => $sort,
 			],
 			'dir' => [
-				'type' => 'select',
+				'type'          => 'select',
 				'label-message' => 'wantedsort-field-dir',
-				'options' => [
+				'options'       => [
 					$this->msg( 'wantedsort-dir-desc' )->text() => 'desc',
-					$this->msg( 'wantedsort-dir-asc' )->text() => 'asc',
+					$this->msg( 'wantedsort-dir-asc' )->text()  => 'asc',
 				],
-				'default' => $dir,
+				'default'       => $dir,
 			],
 			'limit' => [
-				'type' => 'select',
+				'type'          => 'select',
 				'label-message' => 'wantedsort-field-limit',
-				'options' => [
-					'20' => 20,
-					'50' => 50,
-					'100' => 100,
-					'250' => 250,
-					'500' => 500,
-				],
-				'default' => $limit,
+				'options'       => [ '20' => 20, '50' => 50, '100' => 100, '250' => 250, '500' => 500 ],
+				'default'       => $limit,
 			],
 		];
 
-		$form = \HTMLForm::factory( 'ooui', $formFields, $this->getContext() );
+		$form = HTMLForm::factory( 'ooui', $formFields, $this->getContext() );
 		$form->setMethod( 'get' )
-			->setAction( $title->getLocalURL() )
+			->setAction( $this->getPageTitle()->getLocalURL() )
 			->setSubmitTextMsg( 'wantedsort-submit' )
 			->setWrapperLegendMsg( 'wantedsort-legend' )
 			->setId( 'mw-wantedsort-form' )
@@ -179,48 +180,39 @@ class SpecialWantedSort extends SpecialPage {
 
 		$orderBy = $this->buildOrderBy( $sort, $dir, $blNamespace, $blTitle );
 
-		// Count total matching rows for pagination
-		$countRes = $dbr->newSelectQueryBuilder()
-			->rawTables( $tables )
-			->select( [ 'ns' => $blNamespace, 'ti' => $blTitle ] )
-			->where( $conds )
-			->having( $having )
-			->groupBy( [ $blNamespace, $blTitle ] )
-			->joinConds( $joinConds )
-			->caller( __METHOD__ )
-			->fetchResultSet();
-		$totalCount = $countRes->numRows();
-
-		// Fetch the result page
+		// Fetch one extra row to detect whether a next page exists,
+		// avoiding a separate full-scan COUNT query.
 		$res = $dbr->newSelectQueryBuilder()
 			->rawTables( $tables )
 			->select( [
 				'namespace' => $blNamespace,
-				'title' => $blTitle,
-				'value' => 'COUNT(*)',
+				'title'     => $blTitle,
+				'value'     => 'COUNT(*)',
 			] )
 			->where( $conds )
 			->having( $having )
 			->groupBy( [ $blNamespace, $blTitle ] )
 			->orderBy( $orderBy )
-			->limit( $limit )
+			->limit( $limit + 1 )
 			->offset( $offset )
 			->joinConds( $joinConds )
 			->caller( __METHOD__ )
 			->fetchResultSet();
 
-		if ( $totalCount === 0 ) {
+		$hasMore = $res->numRows() > $limit;
+
+		if ( $res->numRows() === 0 ) {
 			$out->addWikiMsg( 'wantedsort-noresults' );
 			return;
 		}
 
-		$out->addHTML( $this->buildNavigationBar( $totalCount, $offset, $limit, $namespace, $sort, $dir ) );
-		$out->addHTML( $this->buildTable( $res, $sort, $dir, $namespace, $limit, $offset ) );
-		$out->addHTML( $this->buildNavigationBar( $totalCount, $offset, $limit, $namespace, $sort, $dir ) );
+		$out->addHTML( $this->buildNavigationBar( $offset, $limit, $hasMore, $namespace, $sort, $dir ) );
+		$out->addHTML( $this->buildTable( $res, $limit, $sort, $dir, $namespace, $offset ) );
+		$out->addHTML( $this->buildNavigationBar( $offset, $limit, $hasMore, $namespace, $sort, $dir ) );
 	}
 
 	/**
-	 * @return string|array ORDER BY value suitable for SelectQueryBuilder::orderBy()
+	 * @return string|array ORDER BY clause for SelectQueryBuilder::orderBy()
 	 */
 	private function buildOrderBy( string $sort, string $dir, string $blNamespace, string $blTitle ) {
 		$dirUpper = strtoupper( $dir );
@@ -231,7 +223,7 @@ class SpecialWantedSort extends SpecialPage {
 					: [ $blTitle, $blNamespace ];
 			case 'namespace':
 				return $dirUpper === 'DESC'
-					? [ "$blNamespace DESC", "$blTitle" ]
+					? [ "$blNamespace DESC", $blTitle ]
 					: [ $blNamespace, $blTitle ];
 			case 'links':
 			default:
@@ -241,13 +233,36 @@ class SpecialWantedSort extends SpecialPage {
 		}
 	}
 
-	private function buildTable( $res, string $sort, string $dir, ?int $namespace, int $limit, int $offset ): string {
+	private function buildTable(
+		IResultWrapper $res,
+		int $limit,
+		string $sort,
+		string $dir,
+		?int $namespace,
+		int $offset
+	): string {
 		$linkRenderer = $this->getLinkRenderer();
 		$lang = $this->getLanguage();
 
-		$html = Html::openElement( 'table', [
-			'class' => 'wikitable sortable mw-wantedsort-table',
-		] );
+		// Collect titles for one-shot link cache warm-up
+		$rows = [];
+		$titles = [];
+		foreach ( $res as $row ) {
+			if ( count( $rows ) >= $limit ) {
+				break;
+			}
+			$title = Title::makeTitleSafe( (int)$row->namespace, $row->title );
+			if ( $title ) {
+				$rows[] = [ 'title' => $title, 'row' => $row ];
+				$titles[] = $title;
+			}
+		}
+
+		$this->linkBatchFactory->newLinkBatch( $titles )->execute();
+
+		$nsNames = $lang->getNamespaces();
+
+		$html = Html::openElement( 'table', [ 'class' => 'wikitable mw-wantedsort-table' ] );
 		$html .= Html::openElement( 'thead' ) . Html::openElement( 'tr' );
 
 		$columns = [
@@ -255,34 +270,27 @@ class SpecialWantedSort extends SpecialPage {
 			'namespace' => 'wantedsort-col-namespace',
 			'links'     => 'wantedsort-col-links',
 		];
-
 		foreach ( $columns as $col => $msgKey ) {
 			$html .= Html::rawElement( 'th', [],
-				$this->makeSortLink( $col, $msgKey, $sort, $dir, $namespace, $limit, $offset )
+				$this->makeSortLink( $col, $msgKey, $sort, $dir, $namespace, $limit )
 			);
 		}
 		$html .= Html::element( 'th', [], $this->msg( 'wantedsort-col-wlh' )->text() );
 		$html .= Html::closeElement( 'tr' ) . Html::closeElement( 'thead' );
 
 		$html .= Html::openElement( 'tbody' );
-
-		foreach ( $res as $row ) {
-			$title = Title::makeTitleSafe( (int)$row->namespace, $row->title );
-			if ( !$title ) {
-				continue;
-			}
-
+		foreach ( $rows as [ 'title' => $title, 'row' => $row ] ) {
 			$pageLink = $linkRenderer->makeBrokenLink( $title );
 			$wlhTitle = SpecialPage::getTitleFor( 'Whatlinkshere', $title->getPrefixedText() );
-			$wlhLink = $linkRenderer->makeLink(
+			$wlhLink  = $linkRenderer->makeLink(
 				$wlhTitle,
 				$this->msg( 'nlinks' )->numParams( (int)$row->value )->text()
 			);
 
-			$nsText = $row->namespace == NS_MAIN
+			$nsId   = (int)$row->namespace;
+			$nsText = $nsId === NS_MAIN
 				? $this->msg( 'blanknamespace' )->escaped()
-				: htmlspecialchars( str_replace( '_', ' ',
-					$lang->getNamespaces()[(int)$row->namespace] ?? (string)$row->namespace ) );
+				: htmlspecialchars( str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId ) );
 
 			$html .= Html::openElement( 'tr' );
 			$html .= Html::rawElement( 'td', [], $pageLink );
@@ -291,51 +299,46 @@ class SpecialWantedSort extends SpecialPage {
 			$html .= Html::rawElement( 'td', [], $wlhLink );
 			$html .= Html::closeElement( 'tr' );
 		}
-
 		$html .= Html::closeElement( 'tbody' );
 		$html .= Html::closeElement( 'table' );
 
 		return $html;
 	}
 
+	/** Sort column header link; always resets offset to 0 to avoid stale pagination. */
 	private function makeSortLink(
 		string $col,
 		string $msgKey,
 		string $currentSort,
 		string $currentDir,
 		?int $namespace,
-		int $limit,
-		int $offset
+		int $limit
 	): string {
 		$label = $this->msg( $msgKey )->escaped();
 
-		// Toggle direction if clicking the already-active column
 		if ( $col === $currentSort ) {
-			$newDir = $currentDir === 'asc' ? 'desc' : 'asc';
+			$newDir   = $currentDir === 'asc' ? 'desc' : 'asc';
 			$indicator = $currentDir === 'asc' ? ' ↑' : ' ↓';
 			$label .= Html::element( 'span', [ 'class' => 'mw-wantedsort-sort-indicator' ], $indicator );
 		} else {
 			$newDir = 'desc';
 		}
 
-		$params = [
-			'sort'   => $col,
-			'dir'    => $newDir,
-			'limit'  => $limit,
-			'offset' => $offset,
-		];
+		$params = [ 'sort' => $col, 'dir' => $newDir, 'limit' => $limit, 'offset' => 0 ];
 		if ( $namespace !== null ) {
 			$params['namespace'] = $namespace;
 		}
 
-		$url = $this->getPageTitle()->getLocalURL( $params );
-		return Html::rawElement( 'a', [ 'href' => $url ], $label );
+		return Html::rawElement( 'a',
+			[ 'href' => $this->getPageTitle()->getLocalURL( $params ) ],
+			$label
+		);
 	}
 
 	private function buildNavigationBar(
-		int $total,
 		int $offset,
 		int $limit,
+		bool $hasMore,
 		?int $namespace,
 		string $sort,
 		string $dir
@@ -345,29 +348,26 @@ class SpecialWantedSort extends SpecialPage {
 			$baseParams['namespace'] = $namespace;
 		}
 
-		$prevLink = '';
-		$nextLink = '';
+		$parts = [];
 
 		if ( $offset > 0 ) {
 			$prevOffset = max( 0, $offset - $limit );
 			$prevUrl = $this->getPageTitle()->getLocalURL( $baseParams + [ 'offset' => $prevOffset ] );
-			$prevLink = Html::rawElement( 'a', [ 'href' => $prevUrl ],
+			$parts[] = Html::rawElement( 'a', [ 'href' => $prevUrl ],
 				$this->msg( 'prevn' )->numParams( $limit )->escaped()
 			);
 		}
 
-		if ( $offset + $limit < $total ) {
+		$parts[] = $this->msg( 'wantedsort-showing-from' )
+			->numParams( $offset + 1, $offset + $limit )
+			->escaped();
+
+		if ( $hasMore ) {
 			$nextUrl = $this->getPageTitle()->getLocalURL( $baseParams + [ 'offset' => $offset + $limit ] );
-			$nextLink = Html::rawElement( 'a', [ 'href' => $nextUrl ],
+			$parts[] = Html::rawElement( 'a', [ 'href' => $nextUrl ],
 				$this->msg( 'nextn' )->numParams( $limit )->escaped()
 			);
 		}
-
-		$showing = $this->msg( 'wantedsort-showing' )
-			->numParams( $offset + 1, min( $offset + $limit, $total ), $total )
-			->escaped();
-
-		$parts = array_filter( [ $prevLink, $showing, $nextLink ] );
 
 		return Html::rawElement( 'div', [ 'class' => 'mw-wantedsort-nav' ],
 			implode( ' | ', $parts )

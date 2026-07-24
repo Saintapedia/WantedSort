@@ -66,11 +66,20 @@ class SpecialWantedSort extends SpecialPage {
 		$request = $this->getRequest();
 		$miserMode = (bool)$this->getConfig()->get( MainConfigNames::MiserMode );
 
-		$nsRaw = $request->getVal( 'namespace', '' );
-		if ( $nsRaw !== '' && ctype_digit( $nsRaw ) && $this->namespaceInfo->exists( (int)$nsRaw ) ) {
-			$namespace = (int)$nsRaw;
-		} else {
-			$namespace = null;
+		// Priority: explicit GET param > $par subpage path > wiki config default.
+		$nsRaw = $request->getVal( 'namespace' );
+		if ( $nsRaw === null && $par !== null && $par !== '' ) {
+			$nsRaw = $par;
+		}
+		$namespace = $this->resolveNamespace( $nsRaw );
+		// Only apply the site default when no namespace input was provided at all.
+		// An explicit empty GET (user chose "All namespaces") or an unrecognised
+		// value must not silently substitute the admin default.
+		if ( $namespace === null && $nsRaw === null ) {
+			$defaultNs = $this->getConfig()->get( 'WantedSortDefaultNamespace' );
+			if ( $defaultNs !== null ) {
+				$namespace = $this->resolveNamespace( (string)$defaultNs );
+			}
 		}
 
 		$sort = $request->getVal( 'sort', 'links' );
@@ -495,10 +504,13 @@ class SpecialWantedSort extends SpecialPage {
 			$newDir = 'desc';
 		}
 
-		$params = [ 'sort' => $col, 'dir' => $newDir, 'limit' => $limit, 'offset' => 0 ];
-		if ( $namespace !== null ) {
-			$params['namespace'] = $namespace;
-		}
+		$params = [
+			'sort'      => $col,
+			'dir'       => $newDir,
+			'limit'     => $limit,
+			'offset'    => 0,
+			'namespace' => $namespace !== null ? (string)$namespace : '',
+		];
 
 		return Html::rawElement( 'a',
 			[ 'href' => $this->getPageTitle()->getLocalURL( $params ) ],
@@ -515,10 +527,12 @@ class SpecialWantedSort extends SpecialPage {
 		string $sort,
 		string $dir
 	): string {
-		$baseParams = [ 'sort' => $sort, 'dir' => $dir, 'limit' => $limit ];
-		if ( $namespace !== null ) {
-			$baseParams['namespace'] = $namespace;
-		}
+		$baseParams = [
+			'sort'      => $sort,
+			'dir'       => $dir,
+			'limit'     => $limit,
+			'namespace' => $namespace !== null ? (string)$namespace : '',
+		];
 
 		$parts = [];
 
@@ -562,6 +576,23 @@ class SpecialWantedSort extends SpecialPage {
 			}
 		}
 		return $snapped;
+	}
+
+	/**
+	 * Resolve a raw string (numeric ID or namespace name) to a valid namespace index.
+	 * Returns null if the string is empty, unrecognised, or below NS_MAIN.
+	 */
+	private function resolveNamespace( ?string $raw ): ?int {
+		if ( $raw === null || $raw === '' ) {
+			return null;
+		}
+		if ( ctype_digit( $raw ) ) {
+			$id = (int)$raw;
+			return ( $id >= NS_MAIN && $this->namespaceInfo->exists( $id ) ) ? $id : null;
+		}
+		// Try canonical or localised namespace name.
+		$id = $this->getContentLanguage()->getNsIndex( str_replace( ' ', '_', $raw ) );
+		return ( $id !== false && $id >= NS_MAIN && $this->namespaceInfo->exists( (int)$id ) ) ? (int)$id : null;
 	}
 
 	/** @inheritDoc */

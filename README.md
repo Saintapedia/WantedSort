@@ -38,12 +38,28 @@ MediaWiki extension that provides **Special:WantedSort** — a filterable, sorta
 
 ## Configuration
 
-No extension-specific config is required. Behavior respects core settings:
+Behavior respects core settings and adds one extension-specific option:
 
-| Setting | Effect |
-|---------|--------|
-| `$wgWantedPagesThreshold` | Minimum link count (same semantics as Special:WantedPages) |
-| `$wgMiserMode` | Caps limit/offset, lengthens cache TTL, shows a notice |
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `$wgWantedPagesThreshold` | `1` | Minimum link count (same semantics as Special:WantedPages) |
+| `$wgMiserMode` | `false` | Caps limit/offset, lengthens cache TTL, shows a notice |
+| `$wgWantedSortDefaultNamespace` | `null` | Integer namespace ID to pre-select when no namespace is specified; `null` shows all namespaces |
+
+### Namespace pre-selection priority
+
+1. Explicit `?namespace=` GET parameter (including empty for "All namespaces")
+2. Subpage path — e.g. `Special:WantedSort/Category` or `Special:WantedSort/14`
+3. `$wgWantedSortDefaultNamespace` (only when neither of the above is present)
+4. All namespaces
+
+### Example: default to the Category namespace
+
+```php
+$wgWantedSortDefaultNamespace = NS_CATEGORY; // 14
+```
+
+After this, visiting `Special:WantedSort` lands on the Category filter automatically. Users can still select "All namespaces" from the form to override it.
 
 ## Caching notes
 

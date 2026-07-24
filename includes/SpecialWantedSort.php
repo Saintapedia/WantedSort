@@ -504,10 +504,13 @@ class SpecialWantedSort extends SpecialPage {
 			$newDir = 'desc';
 		}
 
-		$params = [ 'sort' => $col, 'dir' => $newDir, 'limit' => $limit, 'offset' => 0 ];
-		if ( $namespace !== null ) {
-			$params['namespace'] = $namespace;
-		}
+		$params = [
+			'sort'      => $col,
+			'dir'       => $newDir,
+			'limit'     => $limit,
+			'offset'    => 0,
+			'namespace' => $namespace !== null ? (string)$namespace : '',
+		];
 
 		return Html::rawElement( 'a',
 			[ 'href' => $this->getPageTitle()->getLocalURL( $params ) ],
@@ -524,10 +527,12 @@ class SpecialWantedSort extends SpecialPage {
 		string $sort,
 		string $dir
 	): string {
-		$baseParams = [ 'sort' => $sort, 'dir' => $dir, 'limit' => $limit ];
-		if ( $namespace !== null ) {
-			$baseParams['namespace'] = $namespace;
-		}
+		$baseParams = [
+			'sort'      => $sort,
+			'dir'       => $dir,
+			'limit'     => $limit,
+			'namespace' => $namespace !== null ? (string)$namespace : '',
+		];
 
 		$parts = [];
 

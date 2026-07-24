@@ -72,7 +72,10 @@ class SpecialWantedSort extends SpecialPage {
 			$nsRaw = $par;
 		}
 		$namespace = $this->resolveNamespace( $nsRaw );
-		if ( $namespace === null ) {
+		// Only apply the site default when no namespace input was provided at all.
+		// An explicit empty GET (user chose "All namespaces") or an unrecognised
+		// value must not silently substitute the admin default.
+		if ( $namespace === null && $nsRaw === null ) {
 			$defaultNs = $this->getConfig()->get( 'WantedSortDefaultNamespace' );
 			if ( $defaultNs !== null ) {
 				$namespace = $this->resolveNamespace( (string)$defaultNs );
@@ -584,7 +587,7 @@ class SpecialWantedSort extends SpecialPage {
 		}
 		// Try canonical or localised namespace name.
 		$id = $this->getContentLanguage()->getNsIndex( str_replace( ' ', '_', $raw ) );
-		return ( $id !== false && $id >= NS_MAIN ) ? (int)$id : null;
+		return ( $id !== false && $id >= NS_MAIN && $this->namespaceInfo->exists( (int)$id ) ) ? (int)$id : null;
 	}
 
 	/** @inheritDoc */

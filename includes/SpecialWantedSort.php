@@ -66,11 +66,17 @@ class SpecialWantedSort extends SpecialPage {
 		$request = $this->getRequest();
 		$miserMode = (bool)$this->getConfig()->get( MainConfigNames::MiserMode );
 
-		$nsRaw = $request->getVal( 'namespace', '' );
-		if ( $nsRaw !== '' && ctype_digit( $nsRaw ) && $this->namespaceInfo->exists( (int)$nsRaw ) ) {
-			$namespace = (int)$nsRaw;
-		} else {
-			$namespace = null;
+		// Priority: explicit GET param > $par subpage path > wiki config default.
+		$nsRaw = $request->getVal( 'namespace' );
+		if ( $nsRaw === null && $par !== null && $par !== '' ) {
+			$nsRaw = $par;
+		}
+		$namespace = $this->resolveNamespace( $nsRaw );
+		if ( $namespace === null ) {
+			$defaultNs = $this->getConfig()->get( 'WantedSortDefaultNamespace' );
+			if ( $defaultNs !== null ) {
+				$namespace = $this->resolveNamespace( (string)$defaultNs );
+			}
 		}
 
 		$sort = $request->getVal( 'sort', 'links' );
@@ -562,6 +568,23 @@ class SpecialWantedSort extends SpecialPage {
 			}
 		}
 		return $snapped;
+	}
+
+	/**
+	 * Resolve a raw string (numeric ID or namespace name) to a valid namespace index.
+	 * Returns null if the string is empty, unrecognised, or below NS_MAIN.
+	 */
+	private function resolveNamespace( ?string $raw ): ?int {
+		if ( $raw === null || $raw === '' ) {
+			return null;
+		}
+		if ( ctype_digit( $raw ) ) {
+			$id = (int)$raw;
+			return ( $id >= NS_MAIN && $this->namespaceInfo->exists( $id ) ) ? $id : null;
+		}
+		// Try canonical or localised namespace name.
+		$id = $this->getContentLanguage()->getNsIndex( str_replace( ' ', '_', $raw ) );
+		return ( $id !== false && $id >= NS_MAIN ) ? (int)$id : null;
 	}
 
 	/** @inheritDoc */

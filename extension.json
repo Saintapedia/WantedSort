@@ -24,6 +24,12 @@
 			]
 		}
 	},
+	"config": {
+		"WantedSortDefaultNamespace": {
+			"value": null,
+			"description": "Default namespace ID (integer) to pre-select on Special:WantedSort, or null to show all namespaces."
+		}
+	},
 	"MessagesDirs": {
 		"WantedSort": [ "i18n" ]
 	},

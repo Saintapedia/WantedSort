@@ -24,5 +24,8 @@
 	"wantedsort-showing-from": "Results $1–$2",
 	"wantedsort-noresults": "No wanted pages found matching your filters.",
 	"wantedsort-miser-notice": "This wiki limits expensive queries. Results are capped and may not reflect the very latest links.",
-	"wantedsort-cached-notice": "These results were served from cache and may not reflect the very latest links."
+	"wantedsort-cached-notice": "These results were served from cache and may not reflect the very latest links.",
+	"wantedsort-export-csv": "Download CSV",
+	"wantedsort-export-note": "(up to $1 rows matching the current filters)",
+	"wantedsort-export-truncated": "Export truncated at $1 rows"
 }

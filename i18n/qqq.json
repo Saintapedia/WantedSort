@@ -24,5 +24,8 @@
 	"wantedsort-showing-from": "Pagination status without a total (total is not computed to avoid full scans). $1 = first result number on this page, $2 = last result number on this page.",
 	"wantedsort-noresults": "Message shown when no wanted pages match the active filters.",
 	"wantedsort-miser-notice": "Shown when $wgMiserMode is enabled. Explains capped limits and caching.",
-	"wantedsort-cached-notice": "Shown when the current result page was loaded from WANObjectCache rather than a live SQL query."
+	"wantedsort-cached-notice": "Shown when the current result page was loaded from WANObjectCache rather than a live SQL query.",
+	"wantedsort-export-csv": "Link text for downloading the filtered wanted-pages list as a CSV file.",
+	"wantedsort-export-note": "Shown next to the export link. $1 = maximum number of rows included in the download.",
+	"wantedsort-export-truncated": "Appended as a # comment line at the end of a CSV export when the result set was larger than the export cap. $1 = the cap."
 }

@@ -28,6 +28,10 @@ class SpecialWantedSort extends SpecialPage {
 	/** Tighter caps when $wgMiserMode is on (parity with QueryPage intent). */
 	private const MISER_MAX_LIMIT = 100;
 	private const MISER_MAX_RESULTS = 10000;
+	/** Max rows in a CSV export (full filtered set, not just the current page). */
+	private const EXPORT_MAX = 5000;
+	/** Tighter export cap under miser mode. */
+	private const MISER_EXPORT_MAX = 1000;
 	/** Short TTL when live queries are cheap enough to re-run. */
 	private const CACHE_TTL = 300;
 	/** Longer TTL under miser mode so repeated views hit the cache. */
@@ -56,13 +60,6 @@ class SpecialWantedSort extends SpecialPage {
 
 	/** @inheritDoc */
 	public function execute( $par ) {
-		$this->setHeaders();
-		$this->outputHeader();
-		$this->addHelpLink( 'Extension:WantedSort' );
-
-		$out = $this->getOutput();
-		$out->addModuleStyles( 'ext.wantedSort' );
-
 		$request = $this->getRequest();
 		$miserMode = (bool)$this->getConfig()->get( MainConfigNames::MiserMode );
 
@@ -90,6 +87,20 @@ class SpecialWantedSort extends SpecialPage {
 		$dir = $request->getVal( 'dir', 'desc' );
 		$dir = ( $dir === 'asc' ) ? 'asc' : 'desc';
 
+		// CSV download of the filtered set (ignores page offset/limit; hard-capped).
+		// Branch before setHeaders()/outputHeader() so the response is pure CSV.
+		if ( $request->getVal( 'export' ) === 'csv' ) {
+			$this->exportCsv( $namespace, $sort, $dir, $miserMode );
+			return;
+		}
+
+		$this->setHeaders();
+		$this->outputHeader();
+		$this->addHelpLink( 'Extension:WantedSort' );
+
+		$out = $this->getOutput();
+		$out->addModuleStyles( 'ext.wantedSort' );
+
 		$validLimits = $miserMode ? [ 20, 50, 100 ] : [ 20, 50, 100, 250, 500 ];
 		$limit = $request->getInt( 'limit', self::DEFAULT_LIMIT );
 		// Snap to a valid discrete option; reject arbitrary crafted values.
@@ -106,7 +117,106 @@ class SpecialWantedSort extends SpecialPage {
 		}
 
 		$this->showFilterForm( $namespace, $sort, $dir, $limit, $miserMode );
+		$this->showExportLink( $namespace, $sort, $dir, $miserMode );
 		$this->showResults( $namespace, $sort, $dir, $limit, $offset, $miserMode );
+	}
+
+	/**
+	 * Stream a CSV download of wanted titles matching the active filters.
+	 * Uses the same sort/namespace as the UI; capped for safety (see EXPORT_MAX).
+	 */
+	private function exportCsv(
+		?int $namespace,
+		string $sort,
+		string $dir,
+		bool $miserMode
+	): void {
+		$max = $miserMode ? self::MISER_EXPORT_MAX : self::EXPORT_MAX;
+		$threshold = (int)$this->getConfig()->get( MainConfigNames::WantedPagesThreshold );
+		$page = $this->queryResultPage( $namespace, $sort, $dir, $max, 0, $threshold );
+		$rows = $page['rows'];
+		$truncated = $page['hasMore'];
+
+		$this->getOutput()->disable();
+
+		$response = $this->getRequest()->response();
+		$response->header( 'Content-Type: text/csv; charset=utf-8' );
+		$response->header( 'Content-Disposition: attachment; filename="wantedsort.csv"' );
+		// Discourage intermediary caches from storing user-specific filter exports.
+		$response->header( 'Cache-Control: private, max-age=0, must-revalidate' );
+
+		$handle = fopen( 'php://output', 'w' );
+		if ( $handle === false ) {
+			return;
+		}
+
+		// UTF-8 BOM so Excel opens the file with the correct encoding.
+		fwrite( $handle, "\xEF\xBB\xBF" );
+
+		$lang = $this->getLanguage();
+		$nsNames = $lang->getNamespaces();
+
+		fputcsv( $handle, [
+			'title',
+			'namespace',
+			'namespace_id',
+			'links',
+		] );
+
+		foreach ( $rows as $row ) {
+			$title = Title::makeTitleSafe( $row['namespace'], $row['title'] );
+			if ( !$title ) {
+				continue;
+			}
+			$nsId = $row['namespace'];
+			$nsLabel = $nsId === NS_MAIN
+				? $this->msg( 'blanknamespace' )->text()
+				: str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId );
+
+			fputcsv( $handle, [
+				$title->getPrefixedText(),
+				$nsLabel,
+				$nsId,
+				$row['value'],
+			] );
+		}
+
+		if ( $truncated ) {
+			// Comment line at end so consumers can see the export was capped.
+			// Not a data row (starts with #); spreadsheet tools usually ignore it.
+			fwrite( $handle, '# ' . $this->msg( 'wantedsort-export-truncated' )
+				->numParams( $max )->text() . "\n" );
+		}
+
+		fclose( $handle );
+	}
+
+	/** Link to download the current filter set as CSV (capped; see exportCsv). */
+	private function showExportLink(
+		?int $namespace,
+		string $sort,
+		string $dir,
+		bool $miserMode
+	): void {
+		$max = $miserMode ? self::MISER_EXPORT_MAX : self::EXPORT_MAX;
+		$params = [
+			'export'    => 'csv',
+			'sort'      => $sort,
+			'dir'       => $dir,
+			'namespace' => $namespace !== null ? (string)$namespace : '',
+		];
+		$url = $this->getPageTitle()->getLocalURL( $params );
+		$link = Html::element(
+			'a',
+			[ 'href' => $url ],
+			$this->msg( 'wantedsort-export-csv' )->text()
+		);
+		$note = $this->msg( 'wantedsort-export-note' )->numParams( $max )->escaped();
+		$this->getOutput()->addHTML(
+			Html::rawElement( 'p', [ 'class' => 'mw-wantedsort-export' ],
+				$link . ' ' . Html::rawElement( 'span', [ 'class' => 'mw-wantedsort-export-note' ], $note )
+			)
+		);
 	}
 
 	private function showFilterForm(

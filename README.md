@@ -2,6 +2,8 @@
 
 MediaWiki extension that provides **Special:WantedSort** — a filterable, sortable alternative to core [Special:WantedPages](https://www.mediawiki.org/wiki/Help:Special_pages#Lists_of_pages).
 
+**Live demo:** [Special:WantedSort on Saintapedia (dev)](https://dev.saintapedia.org/wiki/Special:WantedSort)
+
 ## Features
 
 - Filter by namespace
@@ -34,7 +36,7 @@ MediaWiki extension that provides **Special:WantedSort** — a filterable, sorta
 
 3. Run `maintenance/update.php` if your deployment requires it after enabling extensions.
 
-4. Visit `Special:WantedSort`.
+4. Visit `Special:WantedSort` on your wiki (example: [https://dev.saintapedia.org/wiki/Special:WantedSort](https://dev.saintapedia.org/wiki/Special:WantedSort)).
 
 ## Configuration
 

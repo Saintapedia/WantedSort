@@ -66,7 +66,7 @@ After this, visiting `Special:WantedSort` lands on the Category filter automatic
 
 ## CSV export
 
-Use **Download CSV** on the special page, or open the same filters with `export=csv`:
+Use **Export to CSV** on the special page, or open the same filters with `export=csv`:
 
 ```
 /wiki/Special:WantedSort?namespace=14&sort=links&dir=desc&export=csv

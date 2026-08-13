@@ -4,8 +4,7 @@ MediaWiki extension that provides **Special:WantedSort** — a filterable, sorta
 
 **Release:** [v1.0.0](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.0) · **Deploy guide:** [DEPLOY.md](./DEPLOY.md)
 
-**Live demo (local golden Canasta):** [http://localhost:8080/wiki/Special:WantedSort](http://localhost:8080/wiki/Special:WantedSort)  
-(Public `dev.saintapedia.org` currently needs the extension files re-synced — see DEPLOY.md.)
+**Live demo:** [Special:WantedSort on Saintapedia (dev)](https://dev.saintapedia.org/wiki/Special:WantedSort) · local golden: [http://localhost:8080/wiki/Special:WantedSort](http://localhost:8080/wiki/Special:WantedSort)
 
 ## Features
 

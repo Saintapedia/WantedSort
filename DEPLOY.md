@@ -69,22 +69,22 @@ No database schema changes — `update.php` is not required for this extension.
 |----------|-----|---------------------|
 | **dev** (golden) | http://localhost:8080/wiki/Special:WantedSort | **Installed** v1.0.0; smoke passed |
 | **sandbox** | http://localhost:8081/wiki/Special:WantedSort | **Installed** v1.0.0; smoke passed |
-| **dev.saintapedia.org** | https://dev.saintapedia.org/wiki/Special:WantedSort | **Broken** — `wfLoadExtension(WantedSort)` but files missing on host `165.22.40.203` |
+| **dev.saintapedia.org** | https://dev.saintapedia.org/wiki/Special:WantedSort | **Live** — page + login-gated export observed; Special:Version still reported git `31bfd7f` (pre-v1.0.0). **Pin to tag `v1.0.0` on that host.** |
 
-### Fix remote `dev.saintapedia.org`
+### Pin remote `dev.saintapedia.org` to v1.0.0
 
-SSH to the host and either:
+SSH to the host (`165.22.40.203`) and update the extension checkout:
 
 ```bash
-# if Canasta user-extensions layout:
-cd /path/to/user-extensions
-git clone --branch v1.0.0 --depth 1 \
-  https://github.com/Saintapedia/WantedSort.git WantedSort
-ln -sfn ../user-extensions/WantedSort /path/to/w/extensions/WantedSort
-# ensure settings load WantedSort, then restart web
+cd /path/to/w/extensions/WantedSort   # or user-extensions/WantedSort
+git fetch --tags origin
+git checkout v1.0.0
+# ensure symlink if using user-extensions:
+# ln -sfn ../user-extensions/WantedSort /path/to/w/extensions/WantedSort
+# restart web container if needed, then confirm Special:Version shows v1.0.0 / b80b7b8
 ```
 
-Or remove `wfLoadExtension( 'WantedSort' )` until the files are present (site currently fatals on every request while the load line is active without files).
+If `extension.json` is missing, the whole wiki can fatal on every request (`Unable to load the extension WantedSort`). Keep the load line only when the directory is present.
 
 ## Rollback
 

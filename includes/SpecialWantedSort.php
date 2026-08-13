@@ -89,7 +89,9 @@ class SpecialWantedSort extends SpecialPage {
 
 		// CSV download of the filtered set (ignores page offset/limit; hard-capped).
 		// Branch before setHeaders()/outputHeader() so the response is pure CSV.
+		// Login-gated: export runs an expensive query; keep it off the anonymous web.
 		if ( $request->getVal( 'export' ) === 'csv' ) {
+			$this->requireLogin( 'wantedsort-export-loginrequired' );
 			$this->exportCsv( $namespace, $sort, $dir, $miserMode );
 			return;
 		}
@@ -191,7 +193,10 @@ class SpecialWantedSort extends SpecialPage {
 		fclose( $handle );
 	}
 
-	/** Link to download the current filter set as CSV (capped; see exportCsv). */
+	/**
+	 * Link to download the current filter set as CSV (capped; see exportCsv).
+	 * Logged-in users get the download link; anonymous users see a login prompt.
+	 */
 	private function showExportLink(
 		?int $namespace,
 		string $sort,
@@ -199,6 +204,16 @@ class SpecialWantedSort extends SpecialPage {
 		bool $miserMode
 	): void {
 		$max = $miserMode ? self::MISER_EXPORT_MAX : self::EXPORT_MAX;
+
+		if ( $this->getUser()->isAnon() ) {
+			$this->getOutput()->addHTML(
+				Html::rawElement( 'p', [ 'class' => 'mw-wantedsort-export' ],
+					$this->msg( 'wantedsort-export-loginrequired' )->parse()
+				)
+			);
+			return;
+		}
+
 		$params = [
 			'export'    => 'csv',
 			'sort'      => $sort,

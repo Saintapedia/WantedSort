@@ -9,7 +9,7 @@ MediaWiki extension that provides **Special:WantedSort** — a filterable, sorta
 - Filter by namespace
 - Sort by link count, title, or namespace (ascending / descending)
 - Configurable page size with previous/next navigation
-- **CSV export** of the filtered set (`?export=csv`; capped at 5,000 rows, or 1,000 under `$wgMiserMode`)
+- **CSV export** of the filtered set for **logged-in users** (`?export=csv`; capped at 5,000 rows, or 1,000 under `$wgMiserMode`)
 - Uses the same SQL shape as modern core WantedPages (threshold, missing-page join, USER/USER_TALK exclusion, MEDIAWIKI source exclusion, redirect HAVING)
 - LinkBatch warm-up for result rows
 - WANObjectCache for each result page (short TTL; longer under `$wgMiserMode`)
@@ -66,7 +66,9 @@ After this, visiting `Special:WantedSort` lands on the Category filter automatic
 
 ## CSV export
 
-Use **Export to CSV** on the special page, or open the same filters with `export=csv`:
+**Requires a logged-in account.** Anonymous visitors see a login prompt; direct `?export=csv` hits redirect to Special:UserLogin.
+
+Use **Export to CSV** on the special page (when signed in), or open the same filters with `export=csv`:
 
 ```
 /wiki/Special:WantedSort?namespace=14&sort=links&dir=desc&export=csv

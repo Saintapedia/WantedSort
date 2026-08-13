@@ -27,5 +27,6 @@
 	"wantedsort-cached-notice": "Shown when the current result page was loaded from WANObjectCache rather than a live SQL query.",
 	"wantedsort-export-csv": "Link text for downloading the filtered wanted-pages list as a CSV file.",
 	"wantedsort-export-note": "Shown next to the export link. $1 = maximum number of rows included in the download.",
-	"wantedsort-export-truncated": "Appended as a # comment line at the end of a CSV export when the result set was larger than the export cap. $1 = the cap."
+	"wantedsort-export-truncated": "Appended as a # comment line at the end of a CSV export when the result set was larger than the export cap. $1 = the cap.",
+	"wantedsort-export-loginrequired": "Shown to anonymous users instead of the export link, and as the reason on the login page when they hit ?export=csv directly. Includes a wikilink to Special:UserLogin."
 }

@@ -2,7 +2,7 @@
 
 MediaWiki extension that provides **Special:WantedSort** — a filterable, sortable alternative to core [Special:WantedPages](https://www.mediawiki.org/wiki/Help:Special_pages#Lists_of_pages).
 
-**Release:** [v1.0.1](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.1) (stable) · **Deploy:** [DEPLOY.md](./DEPLOY.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
+**Release:** [v1.0.2](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.2) (stable) · **Deploy:** [DEPLOY.md](./DEPLOY.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
 
 **Live demo:** [Special:WantedSort on Saintapedia (dev)](https://dev.saintapedia.org/wiki/Special:WantedSort) · local golden: [http://localhost:8080/wiki/Special:WantedSort](http://localhost:8080/wiki/Special:WantedSort)
 

@@ -425,7 +425,7 @@ class SpecialWantedSort extends SpecialPage {
 		int $limit
 	): array {
 		$linkRenderer = $this->getLinkRenderer();
-		$lang = $this->getContentLanguage();
+		$lang = $this->getLanguage();
 
 		// Collect titles for one-shot link cache warm-up; filter bad titles here
 		// so $shown reflects only rows that actually render.

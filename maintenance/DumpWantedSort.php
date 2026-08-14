@@ -59,7 +59,11 @@ class DumpWantedSort extends Maintenance {
 		// --namespace
 		$namespace = null;
 		if ( $this->hasOption( 'namespace' ) ) {
-			$nsRaw = (int)$this->getOption( 'namespace' );
+			$nsRawStr = $this->getOption( 'namespace' );
+			if ( !ctype_digit( $nsRawStr ) ) {
+				$this->fatalError( 'Namespace must be an integer ID (e.g. --namespace 14).' );
+			}
+			$nsRaw = (int)$nsRawStr;
 			if ( $nsRaw < NS_MAIN || !$nsInfo->exists( $nsRaw ) ) {
 				$this->fatalError( "Namespace $nsRaw does not exist." );
 			}
@@ -219,6 +223,10 @@ class DumpWantedSort extends Maintenance {
 	}
 
 	private function csvEscape( string $value ): string {
+		// Neutralize spreadsheet formula triggers (same fix as SpecialWantedSort::csvFormulaSafe).
+		if ( $value !== '' && strpbrk( $value[0], "=+-@\t\r" ) !== false ) {
+			$value = "'" . $value;
+		}
 		if ( strpbrk( $value, ',"' . "\n" ) !== false ) {
 			return '"' . str_replace( '"', '""', $value ) . '"';
 		}

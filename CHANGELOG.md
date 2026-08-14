@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Security:** CSV formula-injection hardening; `pingLimiter('wantedsort-export')` for web export
+- **Fix:** Namespace labels use content language consistently (form, table, CSV)
+- **Cleanup:** Shared `namespaceLabel()` / `getLimitOptions()`; `MISER_MAX_LIMIT` applied via `LIMIT_OPTIONS`
+- **New:** `maintenance/DumpWantedSort.php` CLI dump (`csv` / `tsv` / `wiki`)
+
 ## 1.0.0 — 2026-08-13
 
 Final stable release.

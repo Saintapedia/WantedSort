@@ -66,6 +66,33 @@ $wgWantedSortDefaultNamespace = NS_CATEGORY; // 14
 
 After this, visiting `Special:WantedSort` lands on the Category filter automatically. Users can still select "All namespaces" from the form to override it.
 
+## Maintenance script
+
+`DumpWantedSort` exports the same query to stdout — useful for scheduled reports or spreadsheet imports (no browser / login).
+
+```bash
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php [options]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--namespace <id>` | *(all)* | Filter to one namespace by integer ID |
+| `--sort <col>` | `links` | Sort column: `links`, `title`, or `namespace` |
+| `--dir <dir>` | `desc` | Sort direction: `asc` or `desc` |
+| `--limit <n>` | `1000` | Maximum rows (hard max 50 000) |
+| `--format <fmt>` | `csv` | Output format: `csv`, `tsv`, or `wiki` |
+
+### Examples
+
+```bash
+# CSV of all wanted pages, most-linked first
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php > wanted.csv
+
+# Top 50 wanted Category pages as a wiki table
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php \
+  --namespace 14 --limit 50 --format wiki
+```
+
 ## CSV export
 
 **Requires a logged-in account.** Anonymous visitors see a login prompt; direct `?export=csv` hits redirect to Special:UserLogin.
@@ -77,6 +104,8 @@ Use **Export to CSV** on the special page (when signed in), or open the same fil
 ```
 
 Columns: `title`, `namespace`, `namespace_id`, `links`. Export ignores pagination (`limit` / `offset`) and returns up to the export cap for the active namespace/sort filters. If the set is larger than the cap, a `# Export truncated at N rows` comment is appended.
+
+Leading `=`, `+`, `-`, `@` in titles/labels are neutralized for spreadsheet formula injection. Export is rate-limited via `$wgRateLimits['wantedsort-export']` when configured.
 
 ## Caching notes
 

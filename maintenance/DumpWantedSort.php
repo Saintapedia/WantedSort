@@ -88,8 +88,18 @@ class DumpWantedSort extends Maintenance {
 		$dir = $this->getOption( 'dir', 'desc' );
 		$dir = ( $dir === 'asc' ) ? 'asc' : 'desc';
 
-		// --limit
-		$limit = (int)$this->getOption( 'limit', self::DEFAULT_LIMIT );
+		// --limit (same digit guard as --namespace: avoid (int)'foo' => 0)
+		if ( $this->hasOption( 'limit' ) ) {
+			$limitStr = (string)$this->getOption( 'limit' );
+			if ( !ctype_digit( $limitStr ) ) {
+				$this->fatalError(
+					'--limit must be a positive integer (e.g. --limit 1000).'
+				);
+			}
+			$limit = (int)$limitStr;
+		} else {
+			$limit = self::DEFAULT_LIMIT;
+		}
 		if ( $limit < 1 ) {
 			$this->fatalError( '--limit must be >= 1.' );
 		}
@@ -105,6 +115,7 @@ class DumpWantedSort extends Maintenance {
 
 		$threshold = (int)$config->get( MainConfigNames::WantedPagesThreshold );
 		$query = new WantedSortQuery( $dbProvider, $linksMig );
+		// Named trailing args (PHP 8 / MW 1.43+) so dump intent is obvious.
 		$page = $query->fetch(
 			$namespace,
 			$sort,
@@ -112,9 +123,8 @@ class DumpWantedSort extends Maintenance {
 			$limit,
 			0,
 			$threshold,
-			false,
-			10000,
-			false
+			miserMode: false,
+			detectHasMore: false
 		);
 
 		$nsNames = $lang->getNamespaces();

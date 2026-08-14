@@ -1,0 +1,147 @@
+{{Extension
+|status          = stable
+|type1           = special
+|username        = PhotographerTom
+|author          = [[User:PhotographerTom|Tom Horsley]]
+|description     = Filterable and sortable list of most-linked pages that do not exist (Special:WantedSort)
+|image           =
+|imagesize       =
+|version         = 1.0.2
+|update          = 2026-08-14
+|version preview =
+|compatibility policy = rel
+|mediawiki       = 1.43+
+|php             =
+|needs-updatephp = No
+|composer        =
+|table1          =
+|license         = GPL-2.0-or-later
+|download        = {{GithubDownload|Saintapedia|WantedSort}}
+|readme          = [https://github.com/Saintapedia/WantedSort/blob/v1.0.2/README.md README]
+|changelog       = [https://github.com/Saintapedia/WantedSort/blob/v1.0.2/CHANGELOG.md CHANGELOG]
+|example         = [https://dev.saintapedia.org/wiki/Special:WantedSort Special:WantedSort on Saintapedia (dev)]
+|namespace       =
+|parameters      = <nowiki/>
+* $wgWantedSortDefaultNamespace
+* $wgWantedPagesThreshold <small>(core)</small>
+* $wgMiserMode <small>(core)</small>
+* $wgRateLimits <small>['wantedsort-export']</small>
+|tags            =
+|rights          =
+|compatibility   =
+|phabricator     =
+|vagrant-role    =
+}}
+The '''WantedSort''' extension provides '''Special:WantedSort''', a filterable and sortable report of [[Help:Wanted pages|wanted pages]] (titles that are linked but do not exist). It is an alternative to core {{ll|Help:Special pages|Special:WantedPages}} when editors need namespace filters, flexible sort order, CSV export, or a CLI dump.
+
+Developed for [https://saintapedia.org/ Saintapedia].
+
+== Features ==
+
+* Filter by namespace
+* Sort by link count, title, or namespace (ascending or descending)
+* Configurable page size and previous/next navigation
+* CSV export for logged-in users (capped; formula-injection hardened)
+* Maintenance script dump: <code>csv</code>, <code>tsv</code>, or <code>wiki</code>
+* WAN cache for result pages; tighter caps under {{ll|Manual:$wgMiserMode|$wgMiserMode}}
+* Optional default namespace via <code>$wgWantedSortDefaultNamespace</code>
+* Subpage / query pre-filter (e.g. <code>Special:WantedSort/Category</code>)
+
+The SQL shape matches modern core WantedPages (threshold, missing-page join, exclusion of user-space targets and MediaWiki-namespace sources, redirect handling).
+
+== Installation ==
+
+{{ExtensionInstall
+|WantedSort
+|registration=required
+|download-link=[https://github.com/Saintapedia/WantedSort/releases GitHub releases]
+|custom-steps=* Optional: create a local '''Help:WantedSort''' page from the [https://github.com/Saintapedia/WantedSort/blob/v1.0.2/docs/Help-WantedSort.wikitext help wikitext] in the repository for editors.
+}}
+
+Clone a release tag:
+
+<syntaxhighlight lang="bash">
+cd extensions/
+git clone --branch v1.0.2 --depth 1 \
+  https://github.com/Saintapedia/WantedSort.git WantedSort
+</syntaxhighlight>
+
+<syntaxhighlight lang="php">
+wfLoadExtension( 'WantedSort' );
+</syntaxhighlight>
+
+No database schema update is required.
+
+== Configuration ==
+
+; <code>$wgWantedSortDefaultNamespace</code>
+: Integer namespace ID to pre-select when the user has not chosen a namespace (and no subpage / query override). Default: <code>null</code> (all namespaces).
+; <code>$wgWantedPagesThreshold</code>
+: Core setting. Minimum incoming links for a title to appear. Same semantics as Special:WantedPages.
+; <code>$wgMiserMode</code>
+: Core setting. When true, lowers page-size options, caps deep offsets, lengthens cache TTL, and lowers the CSV export cap.
+; <code>$wgRateLimits['wantedsort-export']</code>
+: Optional. Throttles web CSV export for logged-in users. Example:
+
+<syntaxhighlight lang="php">
+$wgWantedSortDefaultNamespace = NS_CATEGORY; // 14
+
+$wgRateLimits['wantedsort-export'] = [
+	'user' => [ 10, 60 ], // 10 exports per minute
+];
+</syntaxhighlight>
+
+=== Namespace selection priority ===
+
+# <code>?namespace=</code> query parameter (empty = all)
+# Special page subpage (name or ID)
+# <code>$wgWantedSortDefaultNamespace</code>
+# All namespaces
+
+== Special:WantedSort ==
+
+Editors use the filter form to choose namespace, sort field, direction, and page size. Results show the missing title, namespace, link count, and a link to {{ll|Help:What links here|Special:WhatLinksHere}}.
+
+=== CSV export ===
+
+Logged-in users can download the '''filtered''' set (not only the current page):
+
+* UI: '''Export to CSV'''
+* URL: <code>Special:WantedSort?…&export=csv</code>
+
+Columns: <code>title</code>, <code>namespace</code>, <code>namespace_id</code>, <code>links</code>. Caps: 5,000 rows (1,000 under miser mode). Anonymous users are sent to login. Export can be rate-limited with <code>$wgRateLimits['wantedsort-export']</code>.
+
+== Maintenance script ==
+
+<syntaxhighlight lang="bash">
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php \
+  --namespace 14 --limit 1000 --format csv > wanted.csv
+</syntaxhighlight>
+
+{| class="wikitable"
+! Option !! Default !! Description
+|-
+| <code>--namespace</code> || all || Integer namespace ID (not a name string)
+|-
+| <code>--sort</code> || <code>links</code> || <code>links</code>, <code>title</code>, or <code>namespace</code>
+|-
+| <code>--dir</code> || <code>desc</code> || <code>asc</code> or <code>desc</code>
+|-
+| <code>--limit</code> || <code>1000</code> || Max rows (hard max 50,000)
+|-
+| <code>--format</code> || <code>csv</code> || <code>csv</code>, <code>tsv</code>, or <code>wiki</code>
+|}
+
+== Caching ==
+
+Each result page is cached in the main WAN object cache (5 minutes normally; 1 hour under miser mode). This is not a full {{ll|Manual:QueryPage.php|QueryPage}} / <code>querycache</code> rewrite; live <code>GROUP BY</code> queries still run on cache miss.
+
+== See also ==
+
+* {{ll|Help:Special pages}} — Core special pages including WantedPages
+* {{ll|Manual:$wgMiserMode}} — Expensive-query limits
+* [https://github.com/Saintapedia/WantedSort GitHub repository]
+* [https://dev.saintapedia.org/wiki/Special:WantedSort Live demo (Saintapedia dev)]
+
+[[Category:Special page extensions]]
+[[Category:Page existence extensions]]

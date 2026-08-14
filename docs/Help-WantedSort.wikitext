@@ -1,0 +1,101 @@
+{{#ifexist:Extension:WantedSort|[[Category:Extension help]]|[[Category:Help]]}}
+{{DISPLAYTITLE:Help:WantedSort}}
+
+'''Special:WantedSort''' lists [[Help:Wanted pages|wanted pages]] (titles that are linked to but do not exist), with filters and sort options that core [[Special:WantedPages]] does not provide.
+
+This is the detailed user guide. For installation and configuration, see the [https://github.com/Saintapedia/WantedSort extension README] or ask a site administrator.
+
+== Opening the report ==
+
+Go to '''[[Special:WantedSort]]'''.
+
+You can also bookmark a filtered view:
+
+* By subpage (namespace name or ID): <code>Special:WantedSort/Category</code> or <code>Special:WantedSort/14</code>
+* By query string: <code>Special:WantedSort?namespace=14&sort=links&dir=desc&limit=50</code>
+
+== Filter form ==
+
+{| class="wikitable"
+! Field !! Purpose
+|-
+| '''Namespace''' || Limit results to one namespace, or show all.
+|-
+| '''Sort by''' || Link count, title, or namespace.
+|-
+| '''Direction''' || Ascending or descending.
+|-
+| '''Results per page''' || Page size (20–500; fewer options if the wiki has “miser mode” enabled).
+|}
+
+Click '''Filter''' to apply. Column headers in the results table re-sort and reset to the first page.
+
+=== How namespace is chosen when you first open the page ===
+
+# Explicit <code>?namespace=</code> in the URL (empty value means all namespaces)
+# Subpage path (<code>Special:WantedSort/…</code>)
+# Site default set by administrators (<code>$wgWantedSortDefaultNamespace</code>), if any
+# Otherwise: all namespaces
+
+== Reading the results ==
+
+{| class="wikitable"
+! Column !! Meaning
+|-
+| '''Page title''' || Missing title (red link). Creating the page will remove it from this list once links are re-evaluated.
+|-
+| '''Namespace''' || Namespace of the missing title.
+|-
+| '''Incoming links''' || How many pages link to this missing title (above the wiki’s threshold).
+|-
+| '''What links here''' || Jump to [[Special:WhatLinksHere]] for that title.
+|}
+
+Use '''previous''' / '''next''' for pagination. The status line shows the range of rows on the current page (not a total count of all wanted pages).
+
+=== Notices you may see ===
+
+* '''Miser mode''' — The wiki limits expensive queries. Caps are lower; results may be slightly stale.
+* '''Cached results''' — This page of results came from cache and may not reflect the very latest links.
+
+== Export to CSV ==
+
+'''You must be logged in''' to export.
+
+# Apply the filters you want (export uses those filters, not only the current page of the table).
+# Click '''Export to CSV''', or open the same filters with <code>&export=csv</code> in the URL.
+
+{| class="wikitable"
+! CSV column !! Content
+|-
+| <code>title</code> || Prefixed title
+|-
+| <code>namespace</code> || Namespace label
+|-
+| <code>namespace_id</code> || Numeric namespace ID
+|-
+| <code>links</code> || Incoming link count
+|}
+
+'''Limits:''' Up to 5,000 rows normally, or 1,000 if miser mode is on. If the list is longer, the file ends with a <code># Export truncated…</code> comment.
+
+'''Security:''' Titles that start with <code>=</code>, <code>+</code>, <code>-</code>, or <code>@</code> are prefixed so spreadsheet programs do not treat them as formulas.
+
+Anonymous users see a log-in prompt instead of the download link.
+
+== Tips for cleaning up wanted pages ==
+
+* Start with the highest link counts (default sort) — fixing those helps the most readers.
+* Filter to one namespace (e.g. main or Category) to work in batches.
+* Use '''What links here''' to decide whether to create the article, fix a typo, or retarget links.
+* After creating many pages, wait for caches (or ask an admin) if the list looks stale.
+
+== See also ==
+
+* [[Special:WantedPages]] — Core unfiltered report
+* [[Special:WantedCategories]], [[Special:WantedTemplates]], [[Special:WantedFiles]] — Other wanted reports
+* [[Special:WhatLinksHere]] — Incoming links for one title
+* [https://github.com/Saintapedia/WantedSort WantedSort on GitHub] — Source, releases, and admin documentation
+
+[[Category:Special pages]]
+[[Category:Help]]

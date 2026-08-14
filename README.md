@@ -1,21 +1,26 @@
 # WantedSort
 
-MediaWiki extension that provides **Special:WantedSort** — a filterable, sortable alternative to core [Special:WantedPages](https://www.mediawiki.org/wiki/Help:Special_pages#Lists_of_pages).
+MediaWiki extension that provides **[Special:WantedSort](https://dev.saintapedia.org/wiki/Special:WantedSort)** — a filterable, sortable alternative to core [Special:WantedPages](https://www.mediawiki.org/wiki/Help:Special_pages#Lists_of_pages).
 
-**Release:** [v1.0.2](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.2) (stable) · **Deploy:** [DEPLOY.md](./DEPLOY.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
-
-**Live demo:** [Special:WantedSort on Saintapedia (dev)](https://dev.saintapedia.org/wiki/Special:WantedSort) · local golden: [http://localhost:8080/wiki/Special:WantedSort](http://localhost:8080/wiki/Special:WantedSort)
+| | |
+|--|--|
+| **Release** | [v1.0.2](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.2) |
+| **Deploy** | [DEPLOY.md](./DEPLOY.md) |
+| **Changelog** | [CHANGELOG.md](./CHANGELOG.md) |
+| **User help (wikitext)** | [docs/Help-WantedSort.wikitext](./docs/Help-WantedSort.wikitext) → on-wiki `Help:WantedSort` |
+| **mediawiki.org** | [docs/mediawiki.org.Extension-WantedSort.wiki](./docs/mediawiki.org.Extension-WantedSort.wiki) → `Extension:WantedSort` |
+| **Live demo** | [dev.saintapedia.org](https://dev.saintapedia.org/wiki/Special:WantedSort) · [localhost:8080](http://localhost:8080/wiki/Special:WantedSort) |
 
 ## Features
 
 - Filter by namespace
 - Sort by link count, title, or namespace (ascending / descending)
 - Configurable page size with previous/next navigation
-- **CSV export** of the filtered set for **logged-in users** (`?export=csv`; capped at 5,000 rows, or 1,000 under `$wgMiserMode`)
-- Uses the same SQL shape as modern core WantedPages (threshold, missing-page join, USER/USER_TALK exclusion, MEDIAWIKI source exclusion, redirect HAVING)
-- LinkBatch warm-up for result rows
-- WANObjectCache for each result page (short TTL; longer under `$wgMiserMode`)
-- Under miser mode: lower max page size, capped deep offsets, and a user-visible notice
+- **CSV export** for **logged-in users** (`?export=csv`; capped at 5,000 rows, or 1,000 under `$wgMiserMode`)
+- CLI dump: `maintenance/DumpWantedSort.php` (`csv` / `tsv` / `wiki`)
+- Same SQL shape as modern core WantedPages (threshold, missing-page join, USER/USER_TALK exclusion, MEDIAWIKI source exclusion, redirect HAVING)
+- LinkBatch warm-up; WANObjectCache per result page
+- Miser-mode safety: lower max page size, capped deep offsets, user notice
 
 ## Requirements
 
@@ -24,51 +29,79 @@ MediaWiki extension that provides **Special:WantedSort** — a filterable, sorta
 
 ## Installation
 
-1. Clone or copy this extension into your MediaWiki `extensions/` directory as `WantedSort`:
+Prefer a release tag (not floating `main`):
 
-   ```bash
-   cd /path/to/mediawiki/extensions
-   git clone https://github.com/Saintapedia/WantedSort.git WantedSort
-   ```
+```bash
+cd /path/to/mediawiki/extensions
+git clone --branch v1.0.2 --depth 1 \
+  https://github.com/Saintapedia/WantedSort.git WantedSort
+```
 
-2. Enable it in `LocalSettings.php` (or your Canasta settings):
+Enable in `LocalSettings.php` (or Canasta `settings.yaml`):
 
-   ```php
-   wfLoadExtension( 'WantedSort' );
-   ```
+```php
+wfLoadExtension( 'WantedSort' );
+```
 
-3. Run `maintenance/update.php` if your deployment requires it after enabling extensions.
+No `update.php` schema step is required. Visit **Special:WantedSort**.
 
-4. Visit `Special:WantedSort` on your wiki (example: [https://dev.saintapedia.org/wiki/Special:WantedSort](https://dev.saintapedia.org/wiki/Special:WantedSort)).
+Optional: create **Help:WantedSort** from [docs/Help-WantedSort.wikitext](./docs/Help-WantedSort.wikitext) so editors have full on-wiki documentation. The special page help icon links to [Extension:WantedSort](https://www.mediawiki.org/wiki/Extension:WantedSort) on mediawiki.org (publish the page from [docs/mediawiki.org.Extension-WantedSort.wiki](./docs/mediawiki.org.Extension-WantedSort.wiki)).
 
 ## Configuration
-
-Behavior respects core settings and adds one extension-specific option:
 
 | Setting | Default | Effect |
 |---------|---------|--------|
 | `$wgWantedPagesThreshold` | `1` | Minimum link count (same semantics as Special:WantedPages) |
 | `$wgMiserMode` | `false` | Caps limit/offset, lengthens cache TTL, shows a notice |
-| `$wgWantedSortDefaultNamespace` | `null` | Integer namespace ID to pre-select when no namespace is specified; `null` shows all namespaces |
+| `$wgWantedSortDefaultNamespace` | `null` | Integer namespace ID to pre-select when none is specified |
+| `$wgRateLimits['wantedsort-export']` | *(unset)* | Optional throttle for web CSV export (see below) |
 
 ### Namespace pre-selection priority
 
-1. Explicit `?namespace=` GET parameter (including empty for "All namespaces")
+1. Explicit `?namespace=` GET parameter (including empty for “All namespaces”)
 2. Subpage path — e.g. `Special:WantedSort/Category` or `Special:WantedSort/14`
 3. `$wgWantedSortDefaultNamespace` (only when neither of the above is present)
 4. All namespaces
 
-### Example: default to the Category namespace
-
 ```php
 $wgWantedSortDefaultNamespace = NS_CATEGORY; // 14
+
+// Optional: throttle web CSV export (logged-in users)
+$wgRateLimits['wantedsort-export'] = [
+	'user' => [ 10, 60 ], // 10 exports per minute
+];
 ```
 
-After this, visiting `Special:WantedSort` lands on the Category filter automatically. Users can still select "All namespaces" from the form to override it.
+## Using Special:WantedSort
+
+See the full guide in **[Help:WantedSort](./docs/Help-WantedSort.wikitext)** (install that page on your wiki).
+
+Short version:
+
+1. Open **Special:WantedSort**
+2. Choose namespace, sort field, direction, and page size → **Filter**
+3. Click column headers to re-sort; use previous/next for pagination
+4. Use **What links here** on a row to find incoming links
+5. **Export to CSV** (logged-in only) for offline work
+
+## CSV export (web)
+
+**Requires login.** Anons see a login prompt; `?export=csv` redirects to Special:UserLogin when anonymous.
+
+```
+/wiki/Special:WantedSort?namespace=14&sort=links&dir=desc&export=csv
+```
+
+| Column | Meaning |
+|--------|---------|
+| `title` | Prefixed page title |
+| `namespace` | Human-readable namespace (content language) |
+| `namespace_id` | Namespace integer ID |
+| `links` | Incoming link count |
+
+Export ignores UI pagination and returns up to **5,000** rows ( **1,000** under `$wgMiserMode` ). A `# Export truncated…` comment is appended if the cap is hit. Leading `=`, `+`, `-`, `@` in cells are neutralized for spreadsheet formula injection.
 
 ## Maintenance script
-
-`DumpWantedSort` exports the same query to stdout — useful for scheduled reports or spreadsheet imports (no browser / login).
 
 ```bash
 php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php [options]
@@ -76,45 +109,53 @@ php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php [op
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--namespace <id>` | *(all)* | Filter to one namespace by integer ID |
-| `--sort <col>` | `links` | Sort column: `links`, `title`, or `namespace` |
-| `--dir <dir>` | `desc` | Sort direction: `asc` or `desc` |
-| `--limit <n>` | `1000` | Maximum rows (hard max 50 000) |
-| `--format <fmt>` | `csv` | Output format: `csv`, `tsv`, or `wiki` |
-
-### Examples
+| `--namespace <id>` | *(all)* | Integer namespace ID only (e.g. `14`, not `Category`) |
+| `--sort <col>` | `links` | `links`, `title`, or `namespace` |
+| `--dir <dir>` | `desc` | `asc` or `desc` |
+| `--limit <n>` | `1000` | Max rows (hard max 50 000; digits only) |
+| `--format <fmt>` | `csv` | `csv`, `tsv`, or `wiki` |
 
 ```bash
-# CSV of all wanted pages, most-linked first
 php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php > wanted.csv
 
-# Top 50 wanted Category pages as a wiki table
 php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php \
   --namespace 14 --limit 50 --format wiki
 ```
-
-## CSV export
-
-**Requires a logged-in account.** Anonymous visitors see a login prompt; direct `?export=csv` hits redirect to Special:UserLogin.
-
-Use **Export to CSV** on the special page (when signed in), or open the same filters with `export=csv`:
-
-```
-/wiki/Special:WantedSort?namespace=14&sort=links&dir=desc&export=csv
-```
-
-Columns: `title`, `namespace`, `namespace_id`, `links`. Export ignores pagination (`limit` / `offset`) and returns up to the export cap for the active namespace/sort filters. If the set is larger than the cap, a `# Export truncated at N rows` comment is appended.
-
-Leading `=`, `+`, `-`, `@` in titles/labels are neutralized for spreadsheet formula injection. Export is rate-limited via `$wgRateLimits['wantedsort-export']` when configured.
 
 ## Caching notes
 
 Result **pages** (namespace + sort + dir + limit + offset) are cached in the main WAN object cache:
 
-- Normal: 5 minutes
-- Miser mode: 1 hour
+- Normal: 5 minutes  
+- Miser mode: 1 hour  
 
-This is **not** a full QueryPage/`querycache` rewrite. Live `GROUP BY` queries still run on cache miss. On very large wikis, prefer enabling miser mode and/or using core Special:WantedPages for the unfiltered report.
+This is **not** a full QueryPage / `querycache` rewrite. Live `GROUP BY` queries still run on cache miss. On very large wikis, enable miser mode and/or use core Special:WantedPages for the unfiltered report.
+
+## Documentation map
+
+| Audience | Document |
+|----------|----------|
+| End users / editors | On-wiki **Help:WantedSort** ← `docs/Help-WantedSort.wikitext` |
+| Admins / install | This README + **DEPLOY.md** |
+| mediawiki.org | **Extension:WantedSort** ← `docs/mediawiki.org.Extension-WantedSort.wiki` |
+| Release history | **CHANGELOG.md** |
+
+### Publish Help:WantedSort on a wiki
+
+```bash
+# From MediaWiki root (example: Canasta web container)
+php maintenance/run.php edit.php --wiki=mwdev --summary="Import WantedSort help" \
+  "Help:WantedSort" < /path/to/extensions/WantedSort/docs/Help-WantedSort.wikitext
+```
+
+Or paste the file contents into a new page **Help:WantedSort** in the browser.
+
+### Publish Extension:WantedSort on mediawiki.org
+
+1. Log in at [mediawiki.org](https://www.mediawiki.org/)
+2. Create [Extension:WantedSort](https://www.mediawiki.org/wiki/Extension:WantedSort)
+3. Paste contents of `docs/mediawiki.org.Extension-WantedSort.wiki`
+4. Save (extension help icon on Special:WantedSort points here)
 
 ## License
 

@@ -4,7 +4,7 @@
 	},
 	"wantedsort": "Name of the special page.",
 	"wantedsort-desc": "Short description shown on Special:SpecialPages.",
-	"wantedsort-summary": "Introductory paragraph shown beneath the page heading via outputHeader().",
+	"wantedsort-summary": "Introductory paragraph shown beneath the page heading via outputHeader(). Points users at filters, CSV export, and the full help page.",
 	"wantedsort-legend": "Legend (title) of the filter form.",
 	"wantedsort-field-namespace": "Label for the namespace filter dropdown.",
 	"wantedsort-field-sort": "Label for the sort-by dropdown.",

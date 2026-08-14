@@ -4,7 +4,7 @@
 	},
 	"wantedsort": "WantedSort",
 	"wantedsort-desc": "Filterable and sortable list of most-linked pages that do not exist",
-	"wantedsort-summary": "This page lists pages that are linked to but do not exist, with filters for namespace and sorting options.",
+	"wantedsort-summary": "This page lists pages that are linked to but do not exist. Use the form to filter by namespace and change sort order. Logged-in users can export results to CSV. Full guide: [[Help:WantedSort]].",
 	"wantedsort-legend": "Filter results",
 	"wantedsort-field-namespace": "Namespace",
 	"wantedsort-field-sort": "Sort by",

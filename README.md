@@ -78,6 +78,18 @@ Use **Export to CSV** on the special page (when signed in), or open the same fil
 
 Columns: `title`, `namespace`, `namespace_id`, `links`. Export ignores pagination (`limit` / `offset`) and returns up to the export cap for the active namespace/sort filters. If the set is larger than the cap, a `# Export truncated at N rows` comment is appended.
 
+### Optional: rate-limit the export
+
+The export runs an uncached `GROUP BY` query. To throttle it, add to `LocalSettings.php`:
+
+```php
+$wgRateLimits['wantedsort-export'] = [
+    'user' => [ 3, 60 ], // 3 exports per minute per logged-in user
+];
+```
+
+Without this, no throttling is applied beyond the login requirement.
+
 ## Caching notes
 
 Result **pages** (namespace + sort + dir + limit + offset) are cached in the main WAN object cache:

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.2 — 2026-08-14
+
+### Fixes
+
+- `DumpWantedSort --namespace`: non-integer input (e.g. `--namespace Category`) now exits with a clear error instead of silently querying NS_MAIN
+- `DumpWantedSort --limit`: same `ctype_digit` guard; non-integer input now gives a clear error
+
+### Install pin
+
+```bash
+git clone --branch v1.0.2 --depth 1 \
+  https://github.com/Saintapedia/WantedSort.git WantedSort
+```
+
 ## 1.0.1 — 2026-08-14
 
 ### Security (from 1.0.0 post-release)
@@ -28,4 +42,4 @@ git clone --branch v1.0.1 --depth 1 \
 
 ## 1.0.0 — 2026-08-13
 
-Final stable feature release (filter/sort/pagination, login-gated CSV export, cache, miser caps, default namespace). Prefer **v1.0.1** for security + CLI + shared query cleanup.
+Final stable feature release (filter/sort/pagination, login-gated CSV export, cache, miser caps, default namespace). Prefer **v1.0.2** for all fixes.

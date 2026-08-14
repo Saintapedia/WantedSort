@@ -1,6 +1,6 @@
 # WantedSort production deploy
 
-**Stable release: [v1.0.1](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.1)**  
+**Stable release: [v1.0.2](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.2)**  
 Pin prod to this tag (or newer `v1.0.x`). Do not track floating `main`.
 
 See [CHANGELOG.md](./CHANGELOG.md) for details.
@@ -11,7 +11,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for details.
 
    ```bash
    cd /path/to/mediawiki/w/extensions   # or user-extensions on Canasta
-   git clone --branch v1.0.1 --depth 1 \
+   git clone --branch v1.0.2 --depth 1 \
      https://github.com/Saintapedia/WantedSort.git WantedSort
    ```
 
@@ -46,7 +46,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for details.
 
    Respects core `$wgMiserMode` and `$wgWantedPagesThreshold`.
 
-4. Restart web (Canasta: `canasta restart -i <instance>`) and confirm **Special:Version** lists WantedSort **1.0.1**.
+4. Restart web (Canasta: `canasta restart -i <instance>`) and confirm **Special:Version** lists WantedSort **1.0.2**.
 
 No database schema changes — `update.php` is not required for this extension.
 
@@ -80,18 +80,18 @@ php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php \
 
 | Instance | URL | Status |
 |----------|-----|--------|
-| **dev** (golden) | http://localhost:8080/wiki/Special:WantedSort | Sync from repo; pin **v1.0.1** |
-| **sandbox** | http://localhost:8081/wiki/Special:WantedSort | Sync from repo; pin **v1.0.1** |
-| **dev.saintapedia.org** | https://dev.saintapedia.org/wiki/Special:WantedSort | Checkout **v1.0.1** on host when deploying |
+| **dev** (golden) | http://localhost:8080/wiki/Special:WantedSort | Sync from repo; pin **v1.0.2** |
+| **sandbox** | http://localhost:8081/wiki/Special:WantedSort | Sync from repo; pin **v1.0.2** |
+| **dev.saintapedia.org** | https://dev.saintapedia.org/wiki/Special:WantedSort | Checkout **v1.0.2** on host when deploying |
 
 ### Pin remote / prod host
 
 ```bash
 cd /path/to/w/extensions/WantedSort   # or user-extensions/WantedSort
 git fetch --tags origin
-git checkout v1.0.1
+git checkout v1.0.2
 # ln -sfn ../user-extensions/WantedSort /path/to/w/extensions/WantedSort
-# restart web; confirm Special:Version → WantedSort 1.0.1
+# restart web; confirm Special:Version → WantedSort 1.0.2
 ```
 
 If `extension.json` is missing, the whole wiki can fatal on every request. Keep the load line only when the directory is present.

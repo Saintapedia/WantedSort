@@ -8,6 +8,7 @@
 namespace MediaWiki\Extension\WantedSort;
 
 use MediaWiki\Cache\LinkBatchFactory;
+use MediaWiki\Exception\ThrottledError;
 use MediaWiki\HTMLForm\HTMLForm;
 use MediaWiki\Html\Html;
 use MediaWiki\Linker\LinksMigration;
@@ -25,6 +26,8 @@ class SpecialWantedSort extends SpecialPage {
 	private const VALID_SORTS = [ 'links', 'title', 'namespace' ];
 	private const DEFAULT_LIMIT = 50;
 	private const MAX_LIMIT = 500;
+	/** Full set of selectable page-size options, before any miser-mode filtering. */
+	private const LIMIT_OPTIONS = [ 20, 50, 100, 250, 500 ];
 	/** Tighter caps when $wgMiserMode is on (parity with QueryPage intent). */
 	private const MISER_MAX_LIMIT = 100;
 	private const MISER_MAX_RESULTS = 10000;
@@ -92,6 +95,12 @@ class SpecialWantedSort extends SpecialPage {
 		// Login-gated: export runs an expensive query; keep it off the anonymous web.
 		if ( $request->getVal( 'export' ) === 'csv' ) {
 			$this->requireLogin( 'wantedsort-export-loginrequired' );
+			// Export runs an uncached, uncapped-by-normal-caching GROUP BY query;
+			// throttle it the same way core throttles other expensive actions.
+			// Configure via $wgRateLimits['wantedsort-export']; no-op if unset.
+			if ( $this->getUser()->pingLimiter( 'wantedsort-export' ) ) {
+				throw new ThrottledError();
+			}
 			$this->exportCsv( $namespace, $sort, $dir, $miserMode );
 			return;
 		}
@@ -103,7 +112,7 @@ class SpecialWantedSort extends SpecialPage {
 		$out = $this->getOutput();
 		$out->addModuleStyles( 'ext.wantedSort' );
 
-		$validLimits = $miserMode ? [ 20, 50, 100 ] : [ 20, 50, 100, 250, 500 ];
+		$validLimits = $this->getLimitOptions( $miserMode );
 		$limit = $request->getInt( 'limit', self::DEFAULT_LIMIT );
 		// Snap to a valid discrete option; reject arbitrary crafted values.
 		$limit = $this->snapToValidLimit( $limit, $validLimits );
@@ -171,13 +180,11 @@ class SpecialWantedSort extends SpecialPage {
 				continue;
 			}
 			$nsId = $row['namespace'];
-			$nsLabel = $nsId === NS_MAIN
-				? $this->msg( 'blanknamespace' )->text()
-				: str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId );
+			$nsLabel = $this->namespaceLabel( $nsId, $nsNames );
 
 			fputcsv( $handle, [
-				$title->getPrefixedText(),
-				$nsLabel,
+				$this->csvFormulaSafe( $title->getPrefixedText() ),
+				$this->csvFormulaSafe( $nsLabel ),
 				$nsId,
 				$row['value'],
 			] );
@@ -191,6 +198,47 @@ class SpecialWantedSort extends SpecialPage {
 		}
 
 		fclose( $handle );
+	}
+
+	/**
+	 * Neutralize leading formula-trigger characters before a value is written
+	 * to CSV. Page titles are attacker-influenced (MediaWiki's default
+	 * legal-title-chars allow '=', '+', '-', '@'), and spreadsheet apps like
+	 * Excel/Sheets evaluate cells starting with those characters as formulas
+	 * when the file is opened — a classic CSV/formula-injection vector.
+	 * Prefixing with a single quote forces the cell to be read as text.
+	 */
+	private function csvFormulaSafe( string $value ): string {
+		if ( $value !== '' && strpbrk( $value[0], "=+-@\t\r" ) !== false ) {
+			return "'" . $value;
+		}
+		return $value;
+	}
+
+	/**
+	 * Human-readable label for a namespace ID, shared by the filter form, the
+	 * results table, and the CSV export so all three always agree.
+	 *
+	 * @param array<int,string> $nsNames As returned by Language::getNamespaces().
+	 */
+	private function namespaceLabel( int $nsId, array $nsNames ): string {
+		return $nsId === NS_MAIN
+			? $this->msg( 'blanknamespace' )->text()
+			: str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId );
+	}
+
+	/**
+	 * Selectable page-size options, capped to MISER_MAX_LIMIT under miser mode.
+	 *
+	 * @return int[]
+	 */
+	private function getLimitOptions( bool $miserMode ): array {
+		if ( !$miserMode ) {
+			return self::LIMIT_OPTIONS;
+		}
+		return array_values(
+			array_filter( self::LIMIT_OPTIONS, static fn ( int $v ) => $v <= self::MISER_MAX_LIMIT )
+		);
 	}
 
 	/**
@@ -241,26 +289,25 @@ class SpecialWantedSort extends SpecialPage {
 		int $limit,
 		bool $miserMode
 	): void {
-		$lang = $this->getContentLanguage();
+		// Same source (interface language) as buildTable()/exportCsv() use for their
+		// namespace labels, so the filter dropdown always agrees with the results.
+		$lang = $this->getLanguage();
+		$nsNames = $lang->getNamespaces();
 
 		// Build namespace options with "All" pinned first, rest sorted by label
 		$allLabel = $this->msg( 'wantedsort-ns-all' )->text();
 		$nsOptions = [];
-		foreach ( $lang->getNamespaces() as $nsId => $nsName ) {
+		foreach ( array_keys( $nsNames ) as $nsId ) {
 			if ( $nsId < NS_MAIN ) {
 				continue;
 			}
-			$label = $nsId === NS_MAIN
-				? $this->msg( 'blanknamespace' )->text()
-				: str_replace( '_', ' ', $nsName );
-			$nsOptions[$label] = (string)$nsId;
+			$nsOptions[$this->namespaceLabel( $nsId, $nsNames )] = (string)$nsId;
 		}
 		ksort( $nsOptions );
 		$nsOptions = array_merge( [ $allLabel => '' ], $nsOptions );
 
-		$limitOptions = $miserMode
-			? [ '20' => 20, '50' => 50, '100' => 100 ]
-			: [ '20' => 20, '50' => 50, '100' => 100, '250' => 250, '500' => 500 ];
+		$limits = $this->getLimitOptions( $miserMode );
+		$limitOptions = array_combine( array_map( 'strval', $limits ), $limits );
 
 		// Explicit field names so GET params are namespace/sort/dir/limit (not wp*).
 		$formFields = [
@@ -593,9 +640,7 @@ class SpecialWantedSort extends SpecialPage {
 				$this->msg( 'nlinks' )->numParams( $value )->text()
 			);
 
-			$nsText = $nsId === NS_MAIN
-				? $this->msg( 'blanknamespace' )->escaped()
-				: htmlspecialchars( str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId ) );
+			$nsText = htmlspecialchars( $this->namespaceLabel( $nsId, $nsNames ) );
 
 			$html .= Html::openElement( 'tr' );
 			$html .= Html::rawElement( 'td', [], $pageLink );

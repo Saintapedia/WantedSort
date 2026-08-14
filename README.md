@@ -61,6 +61,33 @@ $wgWantedSortDefaultNamespace = NS_CATEGORY; // 14
 
 After this, visiting `Special:WantedSort` lands on the Category filter automatically. Users can still select "All namespaces" from the form to override it.
 
+## Maintenance script
+
+`DumpWantedSort` exports the same query to stdout — useful for scheduled reports, imports into spreadsheets, or pre-populating other tools.
+
+```bash
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php [options]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--namespace <id>` | *(all)* | Filter to one namespace by integer ID |
+| `--sort <col>` | `links` | Sort column: `links`, `title`, or `namespace` |
+| `--dir <dir>` | `desc` | Sort direction: `asc` or `desc` |
+| `--limit <n>` | `1000` | Maximum rows to output |
+| `--format <fmt>` | `csv` | Output format: `csv`, `tsv`, or `wiki` |
+
+### Examples
+
+```bash
+# CSV of all wanted pages, most-linked first
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php > wanted.csv
+
+# Top 50 wanted Category pages as a wiki table
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php \
+  --namespace 14 --limit 50 --format wiki
+```
+
 ## Caching notes
 
 Result **pages** (namespace + sort + dir + limit + offset) are cached in the main WAN object cache:

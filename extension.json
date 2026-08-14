@@ -10,7 +10,8 @@
 		"MediaWiki": ">= 1.43.0"
 	},
 	"AutoloadNamespaces": {
-		"MediaWiki\\Extension\\WantedSort\\": "includes/"
+		"MediaWiki\\Extension\\WantedSort\\": "includes/",
+		"MediaWiki\\Extension\\WantedSort\\Maintenance\\": "maintenance/"
 	},
 	"SpecialPages": {
 		"WantedSort": {

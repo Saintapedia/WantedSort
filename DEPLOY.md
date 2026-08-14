@@ -1,7 +1,9 @@
 # WantedSort production deploy
 
-Pinned release: **[v1.0.0](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.0)**  
-Commit: `b80b7b8` (require login for CSV export)
+**Stable release: [v1.0.0](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.0)**  
+Pin prod to this tag (or the latest `v1.0.x` packaging tag). Do not track floating `main`.
+
+See [CHANGELOG.md](./CHANGELOG.md) for feature details.
 
 ## Install (prod or any Canasta wiki)
 

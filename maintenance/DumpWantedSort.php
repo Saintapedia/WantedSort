@@ -17,6 +17,8 @@
 
 namespace MediaWiki\Extension\WantedSort\Maintenance;
 
+use MediaWiki\Extension\WantedSort\WantedSortCsv;
+use MediaWiki\Extension\WantedSort\WantedSortQuery;
 use MediaWiki\MainConfigNames;
 use MediaWiki\Maintenance\Maintenance;
 use MediaWiki\Title\Title;
@@ -31,7 +33,6 @@ require_once "$IP/maintenance/Maintenance.php";
 
 class DumpWantedSort extends Maintenance {
 
-	private const VALID_SORTS = [ 'links', 'title', 'namespace' ];
 	private const DEFAULT_LIMIT = 1000;
 	/** Hard ceiling so CLI cannot request unbounded GROUP BY scans. */
 	private const MAX_LIMIT = 50000;
@@ -73,8 +74,10 @@ class DumpWantedSort extends Maintenance {
 
 		// --sort
 		$sort = $this->getOption( 'sort', 'links' );
-		if ( !in_array( $sort, self::VALID_SORTS, true ) ) {
-			$this->fatalError( 'Invalid --sort. Choose: ' . implode( ', ', self::VALID_SORTS ) . '.' );
+		if ( !in_array( $sort, WantedSortQuery::VALID_SORTS, true ) ) {
+			$this->fatalError(
+				'Invalid --sort. Choose: ' . implode( ', ', WantedSortQuery::VALID_SORTS ) . '.'
+			);
 		}
 
 		// --dir
@@ -97,70 +100,45 @@ class DumpWantedSort extends Maintenance {
 		}
 
 		$threshold = (int)$config->get( MainConfigNames::WantedPagesThreshold );
-		$dbr = $dbProvider->getReplicaDatabase();
-
-		[ $blNamespace, $blTitle ] = $linksMig->getTitleFields( 'pagelinks' );
-		$queryInfo = $linksMig->getQueryInfo( 'pagelinks', 'pagelinks' );
-
-		$conds = [
-			'pg1.page_namespace' => null,
-			$dbr->expr( $blNamespace, '!=', [ NS_USER, NS_USER_TALK ] ),
-			$dbr->expr( 'pg2.page_namespace', '!=', NS_MEDIAWIKI ),
-		];
-		if ( $namespace !== null ) {
-			$conds[$blNamespace] = $namespace;
-		}
-
-		$tables = array_merge( $queryInfo['tables'], [ 'pg1' => 'page', 'pg2' => 'page' ] );
-		$joinConds = array_merge( [
-			'pg1' => [ 'LEFT JOIN', [
-				'pg1.page_namespace = ' . $blNamespace,
-				'pg1.page_title = ' . $blTitle,
-			] ],
-			'pg2' => [ 'LEFT JOIN', 'pg2.page_id = pl_from' ],
-		], $queryInfo['joins'] );
-
-		$having = [
-			'COUNT(*) > ' . $dbr->addQuotes( $threshold - 1 ),
-			'COUNT(*) > SUM(pg2.page_is_redirect)',
-		];
-
-		$orderBy = $this->buildOrderBy( $sort, $dir, $blNamespace, $blTitle );
-
-		$res = $dbr->newSelectQueryBuilder()
-			->rawTables( $tables )
-			->select( [
-				'namespace' => $blNamespace,
-				'title'     => $blTitle,
-				'value'     => 'COUNT(*)',
-			] )
-			->where( $conds )
-			->having( $having )
-			->groupBy( [ $blNamespace, $blTitle ] )
-			->orderBy( $orderBy )
-			->limit( $limit )
-			->joinConds( $joinConds )
-			->caller( __METHOD__ )
-			->fetchResultSet();
+		$query = new WantedSortQuery( $dbProvider, $linksMig );
+		$page = $query->fetch(
+			$namespace,
+			$sort,
+			$dir,
+			$limit,
+			0,
+			$threshold,
+			false,
+			10000,
+			false
+		);
 
 		$nsNames = $lang->getNamespaces();
+		// Align with Special:WantedSort web CSV (blanknamespace for NS_MAIN).
+		$mainLabel = wfMessage( 'blanknamespace' )->inLanguage( $lang )->text();
 
 		$this->writeHeader( $format );
 
-		foreach ( $res as $row ) {
-			$nsId = (int)$row->namespace;
-			$dbKey = (string)$row->title;
-			$value = (int)$row->value;
-			$title = Title::makeTitleSafe( $nsId, $dbKey );
+		foreach ( $page['rows'] as $row ) {
+			$nsId = $row['namespace'];
+			$title = Title::makeTitleSafe( $nsId, $row['title'] );
 			if ( !$title ) {
 				continue;
 			}
-			$nsName = $nsId === NS_MAIN
+			$nsLabel = WantedSortCsv::namespaceLabel( $nsId, $nsNames, $mainLabel );
+			// Wiki/TSV use empty prefix label for main (wikitext link style).
+			$nsNameForWiki = $nsId === NS_MAIN
 				? ''
 				: str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId );
-			$prefixed = $title->getPrefixedText();
 
-			$this->writeRow( $format, $nsId, $nsName, $prefixed, $value );
+			$this->writeRow(
+				$format,
+				$nsId,
+				$nsLabel,
+				$nsNameForWiki,
+				$title->getPrefixedText(),
+				$row['value']
+			);
 		}
 
 		$this->writeFooter( $format );
@@ -176,31 +154,28 @@ class DumpWantedSort extends Maintenance {
 				$this->output( "title\tnamespace\tnamespace_id\tlinks\n" );
 				break;
 			default: // csv
-				// Match Special:WantedSort web export column order.
-				$this->output( "title,namespace,namespace_id,links\n" );
+				$this->output( WantedSortCsv::headerLine() . "\n" );
 		}
 	}
 
 	private function writeRow(
 		string $format,
 		int $nsId,
-		string $nsName,
+		string $nsLabel,
+		string $nsNameForWiki,
 		string $prefixed,
 		int $value
 	): void {
 		switch ( $format ) {
 			case 'wiki':
-				$this->output( "|-\n| $nsName || [[$prefixed]] || $value\n" );
+				$this->output( "|-\n| $nsNameForWiki || [[$prefixed]] || $value\n" );
 				break;
 			case 'tsv':
-				$this->output( "$prefixed\t$nsName\t$nsId\t$value\n" );
+				$this->output( "$prefixed\t$nsLabel\t$nsId\t$value\n" );
 				break;
 			default: // csv
 				$this->output(
-					$this->csvEscape( $this->csvFormulaSafe( $prefixed ) ) . ','
-					. $this->csvEscape( $this->csvFormulaSafe( $nsName ) ) . ','
-					. $nsId . ','
-					. $value . "\n"
+					WantedSortCsv::formatRow( $prefixed, $nsLabel, $nsId, $value ) . "\n"
 				);
 		}
 	}
@@ -209,41 +184,6 @@ class DumpWantedSort extends Maintenance {
 		if ( $format === 'wiki' ) {
 			$this->output( '|}' . "\n" );
 		}
-	}
-
-	/** @return string|array */
-	private function buildOrderBy( string $sort, string $dir, string $blNamespace, string $blTitle ) {
-		$dirUpper = strtoupper( $dir );
-		switch ( $sort ) {
-			case 'title':
-				return $dirUpper === 'DESC'
-					? [ "$blTitle DESC", "$blNamespace DESC" ]
-					: [ $blTitle, $blNamespace ];
-			case 'namespace':
-				return $dirUpper === 'DESC'
-					? [ "$blNamespace DESC", $blTitle ]
-					: [ $blNamespace, $blTitle ];
-			case 'links':
-			default:
-				return $dirUpper === 'DESC'
-					? [ 'COUNT(*) DESC', $blNamespace, $blTitle ]
-					: [ 'COUNT(*)', $blNamespace, $blTitle ];
-		}
-	}
-
-	private function csvEscape( string $value ): string {
-		if ( strpbrk( $value, ',"' . "\n" ) !== false ) {
-			return '"' . str_replace( '"', '""', $value ) . '"';
-		}
-		return $value;
-	}
-
-	/** Same spreadsheet formula neutralization as Special:WantedSort CSV export. */
-	private function csvFormulaSafe( string $value ): string {
-		if ( $value !== '' && strpbrk( $value[0], "=+-@\t\r" ) !== false ) {
-			return "'" . $value;
-		}
-		return $value;
 	}
 }
 

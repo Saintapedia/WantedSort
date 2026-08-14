@@ -1,9 +1,9 @@
 # WantedSort production deploy
 
-**Stable release: [v1.0.0](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.0)**  
-Pin prod to this tag (or the latest `v1.0.x` packaging tag). Do not track floating `main`.
+**Stable release: [v1.0.1](https://github.com/Saintapedia/WantedSort/releases/tag/v1.0.1)**  
+Pin prod to this tag (or newer `v1.0.x`). Do not track floating `main`.
 
-See [CHANGELOG.md](./CHANGELOG.md) for feature details.
+See [CHANGELOG.md](./CHANGELOG.md) for details.
 
 ## Install (prod or any Canasta wiki)
 
@@ -11,7 +11,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for feature details.
 
    ```bash
    cd /path/to/mediawiki/w/extensions   # or user-extensions on Canasta
-   git clone --branch v1.0.0 --depth 1 \
+   git clone --branch v1.0.1 --depth 1 \
      https://github.com/Saintapedia/WantedSort.git WantedSort
    ```
 
@@ -39,13 +39,23 @@ See [CHANGELOG.md](./CHANGELOG.md) for feature details.
    ```php
    // Pre-select Category namespace on first visit
    $wgWantedSortDefaultNamespace = NS_CATEGORY; // 14
+
+   // Optional: throttle web CSV export (action key wantedsort-export)
+   // $wgRateLimits['wantedsort-export'] = [ 'user' => [ 10, 60 ] ]; // 10/min
    ```
 
    Respects core `$wgMiserMode` and `$wgWantedPagesThreshold`.
 
-4. Restart web (Canasta: `canasta restart -i <instance>`) and confirm **Special:Version** lists WantedSort.
+4. Restart web (Canasta: `canasta restart -i <instance>`) and confirm **Special:Version** lists WantedSort **1.0.1**.
 
 No database schema changes — `update.php` is not required for this extension.
+
+### CLI dump (shell)
+
+```bash
+php maintenance/run.php extensions/WantedSort/maintenance/DumpWantedSort.php \
+  --limit 1000 --format csv > wanted.csv
+```
 
 ## Smoke checklist
 
@@ -57,41 +67,38 @@ No database schema changes — `update.php` is not required for this extension.
 | Logged-in **Export to CSV** | `Content-Type: text/csv`, file `wantedsort.csv` |
 | Filter namespace / sort / next page | Works |
 | `Special:WantedSort/Category` | Namespace pre-selected |
+| DumpWantedSort CLI | Valid CSV/TSV/wiki to stdout |
 | Slow-query log (first day) | No runaway GROUP BY from export spam |
 
 ## Performance notes
 
 - HTML result **pages** are WAN-cached (5 min; 1 h under `$wgMiserMode`).
-- **CSV export is not cached** and runs a live grouped query (max 5 000 rows, or 1 000 under miser mode). Login-only reduces abuse; watch DB if many editors export often.
+- **CSV export is not cached** and runs a live grouped query (max 5 000 rows, or 1 000 under miser mode). Login-only + optional rate limits reduce abuse.
 - Prefer `$wgMiserMode = true` on large production wikis.
 
 ## Local Canasta status (this workspace)
 
-| Instance | URL | Status (2026-08-13) |
-|----------|-----|---------------------|
-| **dev** (golden) | http://localhost:8080/wiki/Special:WantedSort | **Installed** v1.0.0; smoke passed |
-| **sandbox** | http://localhost:8081/wiki/Special:WantedSort | **Installed** v1.0.0; smoke passed |
-| **dev.saintapedia.org** | https://dev.saintapedia.org/wiki/Special:WantedSort | **Live** — page + login-gated export observed; Special:Version still reported git `31bfd7f` (pre-v1.0.0). **Pin to tag `v1.0.0` on that host.** |
+| Instance | URL | Status |
+|----------|-----|--------|
+| **dev** (golden) | http://localhost:8080/wiki/Special:WantedSort | Sync from repo; pin **v1.0.1** |
+| **sandbox** | http://localhost:8081/wiki/Special:WantedSort | Sync from repo; pin **v1.0.1** |
+| **dev.saintapedia.org** | https://dev.saintapedia.org/wiki/Special:WantedSort | Checkout **v1.0.1** on host when deploying |
 
-### Pin remote `dev.saintapedia.org` to v1.0.0
-
-SSH to the host (`165.22.40.203`) and update the extension checkout:
+### Pin remote / prod host
 
 ```bash
 cd /path/to/w/extensions/WantedSort   # or user-extensions/WantedSort
 git fetch --tags origin
-git checkout v1.0.0
-# ensure symlink if using user-extensions:
+git checkout v1.0.1
 # ln -sfn ../user-extensions/WantedSort /path/to/w/extensions/WantedSort
-# restart web container if needed, then confirm Special:Version shows v1.0.0 / b80b7b8
+# restart web; confirm Special:Version → WantedSort 1.0.1
 ```
 
-If `extension.json` is missing, the whole wiki can fatal on every request (`Unable to load the extension WantedSort`). Keep the load line only when the directory is present.
+If `extension.json` is missing, the whole wiki can fatal on every request. Keep the load line only when the directory is present.
 
 ## Rollback
 
 ```bash
 cd extensions/WantedSort && git fetch --tags && git checkout v1.0.0
-# or disable:
-# remove WantedSort from settings.yaml / LocalSettings and restart
+# or disable WantedSort in settings.yaml / LocalSettings and restart
 ```

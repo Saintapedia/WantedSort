@@ -1,44 +1,31 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 — 2026-08-14
 
-- **Security:** CSV formula-injection hardening; `pingLimiter('wantedsort-export')` for web export
-- **Fix:** Namespace labels use content language consistently (form, table, CSV)
-- **Cleanup:** Shared `namespaceLabel()` / `getLimitOptions()`; `MISER_MAX_LIMIT` applied via `LIMIT_OPTIONS`
-- **New:** `maintenance/DumpWantedSort.php` CLI dump (`csv` / `tsv` / `wiki`)
+### Security (from 1.0.0 post-release)
 
-## 1.0.0 — 2026-08-13
-
-Final stable release.
+- CSV formula-injection hardening (`WantedSortCsv::formulaSafe`)
+- Web export rate limit via `pingLimiter('wantedsort-export')` / `$wgRateLimits['wantedsort-export']`
 
 ### Features
 
-- **Special:WantedSort** — filterable, sortable list of most-linked missing pages
-- Filter by namespace; sort by link count, title, or namespace (asc/desc)
-- Pagination with configurable page size
-- **CSV export** for **logged-in users** (`?export=csv`)
-  - Columns: `title`, `namespace`, `namespace_id`, `links`
-  - Cap: 5,000 rows (1,000 under `$wgMiserMode`)
-- WANObjectCache for HTML result pages (5 minutes; 1 hour under miser mode)
-- Miser-mode safety: lower max page size, capped deep offsets, user notice
-- `$wgWantedSortDefaultNamespace` — optional default namespace filter
-- Subpage / `?namespace=` pre-selection (e.g. `Special:WantedSort/Category`)
+- **CLI:** `maintenance/DumpWantedSort.php` (`csv` / `tsv` / `wiki`)
 
-### Requirements
+### Fixes / cleanup
 
-- MediaWiki **≥ 1.43.0**
-
-### Packaging
-
-- `extension.json` version field `1.0.0`
-- `LICENSE` (GPL-2.0)
-- Deploy guide: `DEPLOY.md`
+- Namespace labels use **content language** consistently (form, table, CSV, CLI)
+- Shared `WantedSortQuery` (special page + dump; one GROUP BY implementation)
+- Shared `WantedSortCsv` helpers
+- `getLimitOptions()` / `LIMIT_OPTIONS`; remove unused `MAX_LIMIT`
+- Align CLI CSV main-namespace label with web export (`blanknamespace`)
 
 ### Install pin
 
 ```bash
-git clone --branch v1.0.0 --depth 1 \
+git clone --branch v1.0.1 --depth 1 \
   https://github.com/Saintapedia/WantedSort.git WantedSort
 ```
 
-If you already track the repo, prefer tag **`v1.0.0`** (or the latest **v1.0.x** packaging tag if present).
+## 1.0.0 — 2026-08-13
+
+Final stable feature release (filter/sort/pagination, login-gated CSV export, cache, miser caps, default namespace). Prefer **v1.0.1** for security + CLI + shared query cleanup.

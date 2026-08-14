@@ -22,9 +22,7 @@ use Wikimedia\Rdbms\IReadableDatabase;
 
 class SpecialWantedSort extends SpecialPage {
 
-	private const VALID_SORTS = [ 'links', 'title', 'namespace' ];
 	private const DEFAULT_LIMIT = 50;
-	private const MAX_LIMIT = 500;
 	/** Full set of selectable page-size options, before any miser-mode filtering. */
 	private const LIMIT_OPTIONS = [ 20, 50, 100, 250, 500 ];
 	/** Tighter caps when $wgMiserMode is on (parity with QueryPage intent). */
@@ -82,7 +80,7 @@ class SpecialWantedSort extends SpecialPage {
 		}
 
 		$sort = $request->getVal( 'sort', 'links' );
-		if ( !in_array( $sort, self::VALID_SORTS, true ) ) {
+		if ( !in_array( $sort, WantedSortQuery::VALID_SORTS, true ) ) {
 			$sort = 'links';
 		}
 
@@ -164,12 +162,7 @@ class SpecialWantedSort extends SpecialPage {
 		// Content language: namespace labels must match Title prefixes / filter form.
 		$nsNames = $this->getContentLanguage()->getNamespaces();
 
-		fputcsv( $handle, [
-			'title',
-			'namespace',
-			'namespace_id',
-			'links',
-		] );
+		fputcsv( $handle, WantedSortCsv::COLUMNS );
 
 		foreach ( $rows as $row ) {
 			$title = Title::makeTitleSafe( $row['namespace'], $row['title'] );
@@ -180,8 +173,8 @@ class SpecialWantedSort extends SpecialPage {
 			$nsLabel = $this->namespaceLabel( $nsId, $nsNames );
 
 			fputcsv( $handle, [
-				$this->csvFormulaSafe( $title->getPrefixedText() ),
-				$this->csvFormulaSafe( $nsLabel ),
+				WantedSortCsv::formulaSafe( $title->getPrefixedText() ),
+				WantedSortCsv::formulaSafe( $nsLabel ),
 				$nsId,
 				$row['value'],
 			] );
@@ -198,26 +191,16 @@ class SpecialWantedSort extends SpecialPage {
 	}
 
 	/**
-	 * Neutralize leading formula-trigger characters before writing CSV cells.
-	 * Page titles can start with =, +, -, @ (legal in MediaWiki); spreadsheets
-	 * may treat those as formulas when the file is opened.
-	 */
-	private function csvFormulaSafe( string $value ): string {
-		if ( $value !== '' && strpbrk( $value[0], "=+-@\t\r" ) !== false ) {
-			return "'" . $value;
-		}
-		return $value;
-	}
-
-	/**
 	 * Human-readable label for a namespace ID (filter form, results table, CSV).
 	 *
 	 * @param array<int,string> $nsNames As returned by Language::getNamespaces().
 	 */
 	private function namespaceLabel( int $nsId, array $nsNames ): string {
-		return $nsId === NS_MAIN
-			? $this->msg( 'blanknamespace' )->text()
-			: str_replace( '_', ' ', $nsNames[$nsId] ?? (string)$nsId );
+		return WantedSortCsv::namespaceLabel(
+			$nsId,
+			$nsNames,
+			$this->msg( 'blanknamespace' )->text()
+		);
 	}
 
 	/**
@@ -456,7 +439,7 @@ class SpecialWantedSort extends SpecialPage {
 	}
 
 	/**
-	 * Run the live grouped pagelinks query for one UI page.
+	 * Fetch one page of results via shared WantedSortQuery.
 	 *
 	 * @param IReadableDatabase|null $dbr Caller-supplied handle; obtained fresh if null.
 	 * @return array{rows:list<array{namespace:int,title:string,value:int}>,hasMore:bool}
@@ -470,110 +453,20 @@ class SpecialWantedSort extends SpecialPage {
 		int $threshold,
 		?IReadableDatabase $dbr = null
 	): array {
-		$dbr ??= $this->dbProvider->getReplicaDatabase();
-
-		// Under miser mode, cap the DB fetch so a crafted high offset cannot
-		// return rows past MISER_MAX_RESULTS, matching QueryPage::getDBLimit().
 		$miserMode = (bool)$this->getConfig()->get( MainConfigNames::MiserMode );
-		if ( $miserMode ) {
-			$dbLimit = max( 0, min( $limit + 1, self::MISER_MAX_RESULTS - $offset ) );
-			if ( $dbLimit === 0 ) {
-				return [ 'rows' => [], 'hasMore' => false ];
-			}
-		} else {
-			$dbLimit = $limit + 1;
-		}
-
-		[ $blNamespace, $blTitle ] = $this->linksMigration->getTitleFields( 'pagelinks' );
-		$queryInfo = $this->linksMigration->getQueryInfo( 'pagelinks', 'pagelinks' );
-
-		$conds = [
-			'pg1.page_namespace' => null,
-			$dbr->expr( $blNamespace, '!=', [ NS_USER, NS_USER_TALK ] ),
-			$dbr->expr( 'pg2.page_namespace', '!=', NS_MEDIAWIKI ),
-		];
-
-		if ( $namespace !== null ) {
-			$conds[$blNamespace] = $namespace;
-		}
-
-		$tables = array_merge( $queryInfo['tables'], [
-			'pg1' => 'page',
-			'pg2' => 'page',
-		] );
-
-		$joinConds = array_merge( [
-			'pg1' => [
-				'LEFT JOIN', [
-					'pg1.page_namespace = ' . $blNamespace,
-					'pg1.page_title = ' . $blTitle,
-				],
-			],
-			'pg2' => [ 'LEFT JOIN', 'pg2.page_id = pl_from' ],
-		], $queryInfo['joins'] );
-
-		$having = [
-			'COUNT(*) > ' . $dbr->addQuotes( $threshold - 1 ),
-			'COUNT(*) > SUM(pg2.page_is_redirect)',
-		];
-
-		$orderBy = $this->buildOrderBy( $sort, $dir, $blNamespace, $blTitle );
-
-		// One extra row detects a next page without a separate COUNT(*).
-		$res = $dbr->newSelectQueryBuilder()
-			->rawTables( $tables )
-			->select( [
-				'namespace' => $blNamespace,
-				'title'     => $blTitle,
-				'value'     => 'COUNT(*)',
-			] )
-			->where( $conds )
-			->having( $having )
-			->groupBy( [ $blNamespace, $blTitle ] )
-			->orderBy( $orderBy )
-			->limit( $dbLimit )
-			->offset( $offset )
-			->joinConds( $joinConds )
-			->caller( __METHOD__ )
-			->fetchResultSet();
-
-		$rows = [];
-		$hasMore = false;
-		foreach ( $res as $row ) {
-			if ( count( $rows ) >= $limit ) {
-				$hasMore = true;
-				break;
-			}
-			$rows[] = [
-				'namespace' => (int)$row->namespace,
-				'title'     => (string)$row->title,
-				'value'     => (int)$row->value,
-			];
-		}
-
-		return [ 'rows' => $rows, 'hasMore' => $hasMore ];
-	}
-
-	/**
-	 * @return string|array ORDER BY clause for SelectQueryBuilder::orderBy()
-	 */
-	private function buildOrderBy( string $sort, string $dir, string $blNamespace, string $blTitle ) {
-		$dirUpper = strtoupper( $dir );
-		switch ( $sort ) {
-			case 'title':
-				return $dirUpper === 'DESC'
-					? [ "$blTitle DESC", "$blNamespace DESC" ]
-					: [ $blTitle, $blNamespace ];
-			case 'namespace':
-				return $dirUpper === 'DESC'
-					? [ "$blNamespace DESC", $blTitle ]
-					: [ $blNamespace, $blTitle ];
-			case 'links':
-			default:
-				return $dirUpper === 'DESC'
-					? [ 'COUNT(*) DESC', $blNamespace, $blTitle ]
-					: [ 'COUNT(*)', $blNamespace, $blTitle ];
-		}
+		$query = new WantedSortQuery( $this->dbProvider, $this->linksMigration );
+		return $query->fetch(
+			$namespace,
+			$sort,
+			$dir,
+			$limit,
+			$offset,
+			$threshold,
+			$miserMode,
+			self::MISER_MAX_RESULTS,
+			true,
+			$dbr
+		);
 	}
 
 	/**
